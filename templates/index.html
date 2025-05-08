@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Bootstrap -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- RiverCity custom overrides -->
+  <link href="{{ url_for('static', filename='css/custom.css') }}" rel="stylesheet">
+  <title>Time Clock</title>
+</head>
+<body class="p-4">
+  <!-- Flash messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <!-- Login/Logout -->
+  {% if current_user.is_authenticated %}
+    <a href="{{ url_for('logout') }}" class="btn btn-sm btn-secondary float-end">Logout</a>
+  {% else %}
+    <a href="{{ url_for('login') }}" class="btn btn-sm btn-primary float-end">Manager Login</a>
+  {% endif %}
+
+  <h1>Time Clock</h1>
+
+  <!-- LOCATION SELECT (persisted) -->
+  <form id="location-form" class="row g-2 mb-3">
+    <div class="col-auto">
+      <select id="location-select" class="form-select">
+        {% for L in locations %}
+          <option value="{{ L.id }}">{{ L.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </form>
+
+  <!-- PUNCH FORM -->
+  <form action="{{ url_for('punch') }}" method="post" class="row g-2 mb-4">
+    <input type="hidden" name="loc" id="loc-field">
+    <input type="hidden" name="geo_lat" id="geo_lat">
+    <input type="hidden" name="geo_lng" id="geo_lng">
+
+    <div class="col-auto">
+      <select name="employee_id" id="employee-select" class="form-select" required>
+        <option value="" disabled selected>Select name</option>
+        {% for e in emps %}
+          <option value="{{ e.id }}">{{ e.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-auto">
+      <button name="type" value="IN" class="btn btn-success">In</button>
+      <button name="type" value="OUT" class="btn btn-danger">Out</button>
+    </div>
+  </form>
+
+  <!-- Current Date -->
+  <h2 class="mt-4">{{ current_date }}</h2>
+
+  <!-- Placeholder when no employee selected -->
+  <p id="placeholder-msg" class="text-center mt-3" style="display:none;">
+    Have a wonderful day!
+  </p>
+
+  <!-- Live Feed -->
+  <ul class="list-group" id="live-feed">
+    {% for entry in feed %}
+      <li class="list-group-item">
+        {{ entry.time_str }} – {{ entry.employee }} {{ entry.type }}
+      </li>
+    {% endfor %}
+  </ul>
+
+  <!-- Links -->
+  <a href="{{ url_for('report', loc=sel) }}" class="btn btn-link mt-3">View Weekly Report</a>
+  {% if current_user.is_manager %}
+    <a href="{{ url_for('manage_employees') }}" class="btn btn-link">Manage Employees</a>
+  {% endif %}
+
+  <script>
+    // GEOLOCATION
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        document.getElementById('geo_lat').value = coords.latitude;
+        document.getElementById('geo_lng').value = coords.longitude;
+      },
+      err => alert('Could not get your location: ' + err.message)
+    );
+
+    // LOCATION PERSISTENCE
+    const locSelect = document.getElementById('location-select');
+    const locField  = document.getElementById('loc-field');
+    const savedLoc  = localStorage.getItem('selectedLoc');
+    const qs        = new URLSearchParams(window.location.search);
+
+    // If no ?loc in URL but we have saved, redirect
+    if (!qs.has('loc') && savedLoc) {
+      window.location.search = '?loc=' + savedLoc;
+    }
+
+    // Determine current location
+    const currentLoc = qs.get('loc') || savedLoc || '{{ sel }}';
+    locSelect.value = currentLoc;
+    locField.value  = currentLoc;
+    localStorage.setItem('selectedLoc', currentLoc);
+
+    locSelect.addEventListener('change', () => {
+      const v = locSelect.value;
+      localStorage.setItem('selectedLoc', v);
+      locField.value = v;
+      window.location.search = '?loc=' + v;
+    });
+
+    // FEED TOGGLE + EMPLOYEE RESET
+    const empSelect   = document.getElementById('employee-select');
+    const liveFeed    = document.getElementById('live-feed');
+    const placeholder = document.getElementById('placeholder-msg');
+
+    function toggleFeed() {
+      if (!empSelect.value) {
+        liveFeed.style.display    = 'none';
+        placeholder.style.display = '';
+      } else {
+        placeholder.style.display = 'none';
+        liveFeed.style.display    = '';
+      }
+    }
+
+    empSelect.selectedIndex = 0;    // reset placeholder
+    empSelect.addEventListener('change', toggleFeed);
+    toggleFeed();
+  </script>
+</body>
+</html>
+

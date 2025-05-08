@@ -1,0 +1,78 @@
+/* RiverCity Furniture Auction color scheme */
+:root {
+  /* Gold from the gavel icon */
+  --bs-primary:     #D4AF37;
+  /* White accents (text, borders) */
+  --bs-secondary:   #FFFFFF;
+  /* Charcoal background */
+  --bs-dark:        #2B2B2B;
+  --bs-body-bg:     #2B2B2B;
+  /* Light text on dark */
+  --bs-light:       #F8F9FA;
+  /* Grays */
+  --bs-gray-100:    #F8F9FA;
+  --bs-gray-700:    #6C757D;
+}
+
+/* Global body styling */
+body {
+  background-color: var(--bs-body-bg) !important;
+  color:            var(--bs-light)   !important;
+}
+
+/* Primary buttons & links in gold */
+a,
+.btn-primary {
+  color:           var(--bs-secondary) !important;
+  background-color: var(--bs-primary)   !important;
+  border-color:     var(--bs-primary)   !important;
+}
+.btn-primary:hover {
+  background-color: #b8912e !important;  /* ~10% darker gold */
+  border-color:     #b8912e !important;
+}
+
+/* Secondary text (e.g. labels) on dark bg */
+.text-secondary {
+  color: var(--bs-light) !important;
+}
+
+/* Info alerts */
+.alert-info {
+  background-color: #333333 !important;
+  border-color:     #444444 !important;
+  color:            var(--bs-light) !important;
+}
+
+/* Form selects (drop-downs) */
+.form-select,
+select,
+.dropdown-toggle {
+  color:           var(--bs-light) !important;
+  background-color: var(--bs-dark)  !important;
+  border-color:     var(--bs-secondary) !important;
+}
+/* Options inside selects (may be ignored by some browsers) */
+.form-select option {
+  background-color: var(--bs-dark)  !important;
+  color:            var(--bs-light) !important;
+}
+
+/* List-group items (live feed & manage list) */
+.list-group-item {
+  background-color: var(--bs-dark)      !important;
+  color:            var(--bs-light)     !important;
+  border-color:     var(--bs-secondary) !important;
+}
+
+/* Dark tables (reports) */
+.table-dark th,
+.table-dark td {
+  color: var(--bs-light) !important;
+}
+
+/* Ensure input placeholder text is white */
+.form-control::placeholder {
+  color: var(--bs-light) !important;
+  opacity: 1 !important;
+}
