@@ -22,8 +22,8 @@ TIMEZONES = {
 
 app = Flask(__name__)
 app.config.update(
-  SECRET_KEY=os.environ['zYHKLNBYy6RFLlXylv2RzCqUK3CvnCXQ'],
-  SQLALCHEMY_DATABASE_URI=os.environ['postgresql://timeclock_db_x81m_user:rLVZoYLFUuje8PWHQ4SnAW48nIOtUA9E@dpg-d0egnmh5pdvs73amotfg-a/timeclock_db_x81m'],
+  SECRET_KEY=os.environ['SECRET_KEY'],
+  SQLALCHEMY_DATABASE_URI=os.environ['DATABASE_URL'],
   SQLALCHEMY_TRACK_MODIFICATIONS=False,
 )
 
