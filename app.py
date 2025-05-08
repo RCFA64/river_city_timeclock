@@ -10,6 +10,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from models import db, Location, Employee, Punch, User
 from utils import compute_shifts
 import math
+import os
 
 # Per-location timezones
 TIMEZONES = {
@@ -21,9 +22,9 @@ TIMEZONES = {
 
 app = Flask(__name__)
 app.config.update(
-    SECRET_KEY='replace-me-with-a-secret',
-    SQLALCHEMY_DATABASE_URI='postgresql://timeclock_user:Dallas!23@localhost:5432/timeclock',
-    SQLALCHEMY_TRACK_MODIFICATIONS=False,
+  SECRET_KEY=os.environ['zYHKLNBYy6RFLlXylv2RzCqUK3CvnCXQ'],
+  SQLALCHEMY_DATABASE_URI=os.environ['postgresql://timeclock_db_x81m_user:rLVZoYLFUuje8PWHQ4SnAW48nIOtUA9E@dpg-d0egnmh5pdvs73amotfg-a/timeclock_db_x81m'],
+  SQLALCHEMY_TRACK_MODIFICATIONS=False,
 )
 
 # Initialize extensions
