@@ -125,7 +125,7 @@ def punch():
     user_lat = float(request.form.get('geo_lat', 0))
     user_lng = float(request.form.get('geo_lng', 0))
 
-    if haversine(user_lat, user_lng, loc.lat, loc.lng) > 200:
+    if haversine(user_lat, user_lng, loc.lat, loc.lng) > 5000:
         flash('You must be on-site to punch in/out.', 'danger')
         return redirect(url_for('index', loc=loc_id))
 
