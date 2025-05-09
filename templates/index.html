@@ -44,9 +44,9 @@
 
   <!-- PUNCH FORM -->
   <form action="{{ url_for('punch') }}" method="post" class="row g-2 mb-4">
-    <input type="hidden" name="loc" id="loc-field">
-    <input type="hidden" name="geo_lat" id="geo_lat">
-    <input type="hidden" name="geo_lng" id="geo_lng">
+    <input type="hidden" id="geo_lat" name="geo_lat">
+    <input type="hidden" id="geo_lng" name="geo_lng">
+    <input type="hidden" name="loc" value="{{ sel }}">
 
     <div class="col-auto">
       <select name="employee_id" id="employee-select" class="form-select" required>

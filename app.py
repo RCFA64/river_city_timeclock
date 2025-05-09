@@ -11,6 +11,7 @@ from models import db, Location, Employee, Punch, User
 from utils import compute_shifts
 import math
 import os
+from dotenv import load_dotenv
 
 # Per-location timezones
 TIMEZONES = {
@@ -32,6 +33,7 @@ db.init_app(app)
 login_manager = LoginManager()
 login_manager.login_view = 'login'
 login_manager.init_app(app)
+load_dotenv()
 
 # *** Add this user_loader callback ***
 @login_manager.user_loader
