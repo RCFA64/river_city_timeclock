@@ -60,8 +60,14 @@
       </select>
     </div>
     <div class="col-auto">
-      <button type="submit" id="punch-btn" class="btn btn-lg"></button>
-    </div>
+      <input type="hidden" id="type-field" name="type" value="IN">
+      <button 
+        type="button" 
+        id="toggle-btn" 
+        class="btn btn-lg"
+        style="background-color:#28a745;color:white"
+    >IN</button>
+  </div>
   </form>
 
   <!-- Current date -->
@@ -96,54 +102,65 @@
 
 
   <script>
-    // 1) GEOLOCATION
-    navigator.geolocation.getCurrentPosition(
-      ({ coords }) => {
-        document.getElementById('geo_lat').value = coords.latitude;
-        document.getElementById('geo_lng').value = coords.longitude;
-      },
-      err => console.warn('Could not get location:', err.message)
-    );
+  // 1) GEOLOCATION
+  navigator.geolocation.getCurrentPosition(
+    ({ coords }) => {
+      document.getElementById('geo_lat').value = coords.latitude;
+      document.getElementById('geo_lng').value = coords.longitude;
+    },
+    err => console.warn('Could not get location:', err.message)
+  );
 
-    // 2) LOCATION persistence
-    const locSelect = document.getElementById('location-select');
-    locSelect.addEventListener('change', () => {
-      window.location.search = '?loc=' + locSelect.value + (empParam ? '&emp=' + empParam : '');
-    });
+  // 2) CARRY THROUGH URL PARAMS
+  const empParam = "{{ emp or '' }}";
 
-    // 3) EMPLOYEE + BUTTON toggle logic
-    const empSelect = document.getElementById('employee-select');
-    const punchBtn  = document.getElementById('punch-btn');
-    const typeField = document.getElementById('type-field');
-    // carry through emp param from server
-    const empParam  = "{{ emp or '' }}";
+  // 3) LOCATION PERSISTENCE
+  const locSelect = document.getElementById('location-select');
+  locSelect.addEventListener('change', () => {
+    window.location.search = `?loc=${locSelect.value}${empParam ? `&emp=${empParam}` : ''}`;
+  });
 
-    function updateButton() {
-      const e = empSelect.value;
-      if (!e) {
-        punchBtn.disabled = true;
-        punchBtn.textContent = 'Select a name';
-        punchBtn.className = 'btn btn-lg btn-secondary';
-        return;
-      }
-      punchBtn.disabled = false;
-      // look at the first row of #table to see last status
-      const firstRow = document.querySelector('table tbody tr');
-      let lastType = firstRow ? firstRow.cells[2].textContent.trim() : 'OUT';
-      let nextType = (lastType === 'IN') ? 'OUT' : 'IN';
-      punchBtn.textContent = nextType;
-      punchBtn.className   = 'btn btn-lg ' + (nextType==='IN' ? 'btn-success' : 'btn-danger');
-      typeField.value      = nextType;
+  // 4) EMPLOYEE SELECTION → reload with both loc & emp
+  const empSelect = document.getElementById('employee-select');
+  empSelect.addEventListener('change', () => {
+    window.location.search = `?loc=${locSelect.value}&emp=${empSelect.value}`;
+  });
+
+  // 5) PUNCH-BUTTON TOGGLE
+  // HTML must have:
+  //   <input type="hidden" id="type-field" name="type" value="">
+  //   <button type="submit" id="punch-btn" class="btn btn-lg btn-secondary" disabled>
+  //     Select a name
+  //   </button>
+  const punchBtn  = document.getElementById('punch-btn');
+  const typeField = document.getElementById('type-field');
+
+  function updateButton() {
+    // no employee = disabled grey button
+    if (!empSelect.value) {
+      punchBtn.disabled    = true;
+      punchBtn.textContent = 'Select a name';
+      punchBtn.className   = 'btn btn-lg btn-secondary';
+      typeField.value      = '';
+      return;
     }
 
-    empSelect.addEventListener('change', () => {
-      // preserve ?loc and new emp in URL
-      const loc = locSelect.value;
-      window.location.search = `?loc=${loc}&emp=${empSelect.value}`;
-    });
+    // employee chosen → enabled button
+    punchBtn.disabled = false;
 
-    // run on load
-    updateButton();
-  </script>
+    // look at your table’s first row to see last punch
+    const row      = document.querySelector('#live-feed tbody tr');
+    const lastType = row ? row.cells[2].textContent.trim() : 'OUT';
+    const nextType = (lastType === 'IN') ? 'OUT' : 'IN';
+
+    punchBtn.textContent = nextType;
+    punchBtn.className   = 'btn btn-lg ' + (nextType === 'IN' ? 'btn-success' : 'btn-danger');
+    typeField.value      = nextType;
+  }
+
+  // run on page load
+  updateButton();
+</script>
+
 </body>
 </html>

@@ -134,48 +134,36 @@ def index():
                            current_date=current_date,
                            emp=emp)
 
-@app.route('/punch', methods=['POST'])
+@@app.route('/punch', methods=['POST'])
 def punch():
-    lat_str = request.form.get('geo_lat', '')
-    lng_str = request.form.get('geo_lng', '')
-    try:
-        user_lat = float(lat_str)
-        user_lng = float(lng_str)
-    except ValueError:
-        flash('Unable to get your location. Please allow location access and try again.', 'danger')
-        return redirect(url_for('index', loc=request.form.get('loc')))
-
-    # Pull out IDs
-    loc_id = int(request.form.get('loc', 0))
-    emp_id = request.form.get('employee_id')
-    if not emp_id:
+    loc_id = request.form.get('loc', type=int)
+    emp_val = request.form.get('employee_id')
+    if not emp_val:
         flash('Please select an employee before punching.', 'warning')
         return redirect(url_for('index', loc=loc_id))
-    eid = int(emp_id)
 
-    # Parse coords (some browsers may POST '' if geo not available)
-    geo_lat = request.form.get('geo_lat', '').strip()
-    geo_lng = request.form.get('geo_lng', '').strip()
+    eid = int(emp_val)
+
+    # Parse geo inputs once
     try:
-        user_lat = float(geo_lat)
-        user_lng = float(geo_lng)
-    except ValueError:
+        user_lat = float(request.form['geo_lat'])
+        user_lng = float(request.form['geo_lng'])
+    except (KeyError, ValueError):
         flash('Could not get your location. Please allow location access and try again.', 'danger')
         return redirect(url_for('index', loc=loc_id, emp=eid))
 
-    # Enforce on-site Haversine check
-    loc      = Location.query.get(loc_id)
+    # On-site Haversine check
+    loc = Location.query.get(loc_id)
     if haversine(user_lat, user_lng, loc.lat, loc.lng) > 200:
         flash('You must be on-site to punch in/out.', 'danger')
         return redirect(url_for('index', loc=loc_id, emp=eid))
 
-    # All good—record the punch
+    # Always non-empty now!
     punch_type = request.form.get('type', 'IN')
     p = Punch(employee_id=eid, type=punch_type, timestamp=datetime.utcnow())
     db.session.add(p)
     db.session.commit()
 
-    # Return them to their own feed
     return redirect(url_for('index', loc=loc_id, emp=eid))
 
 @app.route('/report')
