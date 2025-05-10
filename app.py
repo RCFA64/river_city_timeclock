@@ -134,7 +134,7 @@ def index():
                            current_date=current_date,
                            emp=emp)
 
-@@app.route('/punch', methods=['POST'])
+@app.route('/punch', methods=['POST'])
 def punch():
     loc_id = request.form.get('loc', type=int)
     emp_val = request.form.get('employee_id')
