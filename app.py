@@ -88,43 +88,30 @@ def haversine(lat1, lon1, lat2, lon2):
 
 @app.route('/')
 def index():
-    # Locations
     locs = Location.query.all()
-    sel   = int(request.args.get('loc', locs[0].id if locs else 1))
-    emp   = request.args.get('emp', type=int)
+    sel  = int(request.args.get('loc', locs[0].id if locs else 1))
+    emp  = request.args.get('emp', type=int)
     location = Location.query.get(sel)
     tz = ZoneInfo(TIMEZONES[location.name])
 
-    # Current date in local tz
-    current_date = datetime.now(tz).strftime('%A, %B %d, %Y')
+    # date calculations…
+    current_date    = datetime.now(tz).strftime('%A, %B %d, %Y')
+    now_local       = datetime.now(tz)
+    midnight_local  = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+    tomorrow_local  = midnight_local + timedelta(days=1)
+    start_utc       = midnight_local.astimezone(ZoneInfo('UTC'))
+    end_utc         = tomorrow_local.astimezone(ZoneInfo('UTC'))
 
-    # Calculate today's UTC window
-    now_local      = datetime.now(tz)
-    midnight_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-    tomorrow_local = midnight_local + timedelta(days=1)
-    start_utc = midnight_local.astimezone(ZoneInfo('UTC'))
-    end_utc   = tomorrow_local.astimezone(ZoneInfo('UTC'))
-
-    # Selected employee (optional)
-    sel_emp = request.args.get('emp', None)
-    emp_id = int(sel_emp) if sel_emp else None
-
-    # Build base query for punches
-    next_type = 'IN'
-    if emp:
-        last = (Punch.query
-                .filter_by(employee_id=emp)
-                .order_by(Punch.timestamp.desc())
-                .first())
-        if last and last.type == 'IN':
-            next_type = 'OUT'
-
-    raw = (query
+    # **THIS** must be Punch.query, not query
+    raw = (Punch.query
+           .join(Employee)
+           .filter(Employee.location_id==sel,
+                   Punch.timestamp>=start_utc,
+                   Punch.timestamp< end_utc)
            .order_by(Punch.timestamp.desc())
            .limit(20)
            .all())
 
-    # Format feed entries
     feed = []
     for p in raw:
         local_ts = p.timestamp.replace(tzinfo=ZoneInfo('UTC')).astimezone(tz)
@@ -134,18 +121,24 @@ def index():
             'type':     p.type
         })
 
-    # Employees for this location
-    employees = Employee.query.filter_by(location_id=sel).all()
+    # determine next_type toggle
+    next_type = 'IN'
+    if emp:
+        last = (Punch.query
+                .filter_by(employee_id=emp)
+                .order_by(Punch.timestamp.desc())
+                .first())
+        if last and last.type == 'IN':
+            next_type = 'OUT'
 
-    return render_template(
-    'index.html',
-    locations=locs,
-    sel=sel,
-    emps=employees, 
-    feed=feed,
-    current_date=current_date,
-    next_type=next_type
-)
+    employees = Employee.query.filter_by(location_id=sel).all()
+    return render_template('index.html',
+                           locations=locs,
+                           sel=sel,
+                           emps=employees,
+                           feed=feed,
+                           current_date=current_date,
+                           next_type=next_type)
 
 @app.route('/punch', methods=['POST'])
 def punch():
