@@ -90,7 +90,8 @@ def haversine(lat1, lon1, lat2, lon2):
 def index():
     # Locations
     locs = Location.query.all()
-    sel = int(request.args.get('loc', locs[0].id if locs else 1))
+    sel   = int(request.args.get('loc', locs[0].id if locs else 1))
+    emp   = request.args.get('emp', type=int)
     location = Location.query.get(sel)
     tz = ZoneInfo(TIMEZONES[location.name])
 
@@ -109,14 +110,14 @@ def index():
     emp_id = int(sel_emp) if sel_emp else None
 
     # Build base query for punches
-    query = (Punch.query.join(Employee)
-             .filter(
-                 Employee.location_id == sel,
-                 Punch.timestamp >= start_utc,
-                 Punch.timestamp <  end_utc
-             ))
-    if emp_id:
-        query = query.filter(Punch.employee_id == emp_id)
+    next_type = 'IN'
+    if emp:
+        last = (Punch.query
+                .filter_by(employee_id=emp)
+                .order_by(Punch.timestamp.desc())
+                .first())
+        if last and last.type == 'IN':
+            next_type = 'OUT'
 
     raw = (query
            .order_by(Punch.timestamp.desc())
@@ -137,14 +138,14 @@ def index():
     employees = Employee.query.filter_by(location_id=sel).all()
 
     return render_template(
-        'index.html',
-        locations=locs,
-        sel=sel,
-        sel_emp=sel_emp,
-        emps=employees,
-        feed=feed,
-        current_date=current_date
-    )
+    'index.html',
+    locations=locs,
+    sel=sel,
+    emps=employees, 
+    feed=feed,
+    current_date=current_date,
+    next_type=next_type
+)
 
 @app.route('/punch', methods=['POST'])
 def punch():
@@ -196,41 +197,70 @@ def report():
     loc = int(request.args.get('loc', 1))
     tz  = ZoneInfo(TIMEZONES[Location.query.get(loc).name])
 
-    cutoff = datetime.utcnow() - timedelta(days=5*30)
+    # Grab everything in the last two months (or however far back you want)
+    cutoff = datetime.utcnow() - timedelta(days=60)
     punches = (Punch.query.join(Employee)
-               .filter(
-                   Employee.location_id == loc,
-                   Punch.timestamp >= cutoff
-               )
-               .order_by(Employee.id, Punch.timestamp)
+               .filter(Employee.location_id==loc,
+                       Punch.timestamp>=cutoff)
+               .order_by(Punch.timestamp)
                .all())
 
-    # Group by employee & week
-    from collections import defaultdict
+    # First, bucket by week
+    from collections import defaultdict, OrderedDict
     weekly = defaultdict(list)
     for p in punches:
         local_dt = p.timestamp.replace(tzinfo=ZoneInfo('UTC')).astimezone(tz)
-        monday   = local_dt.date() - timedelta(days=local_dt.weekday())
-        weekly[(p.employee_id, monday)].append(local_dt)
+        # Determine the week span
+        monday = local_dt.date() - timedelta(days=local_dt.weekday())
+        sunday = monday + timedelta(days=6)
+        week_key = (monday, sunday)
+        weekly[week_key].append((p.employee_id, local_dt))
 
-    reports = []
-    for (eid, week_start), times in weekly.items():
-        times.sort()
-        stats = compute_shifts(times)
-        emp   = Employee.query.get(eid)
-        reports.append({
-            'employee':   emp.name,
-            'week_start': week_start,
-            'total':      stats['total']
-        })
+    # Anything older than 4 weeks?  Move into months
+    four_weeks_ago = (datetime.now(tz).date() 
+                      - timedelta(weeks=4))
+    monthly = defaultdict(list)
+    for (monday, sunday), entries in list(weekly.items()):
+        if sunday < four_weeks_ago:
+            # pull out and re‐bucket by month
+            for eid, dt in entries:
+                month_key = dt.strftime('%Y-%m')
+                monthly[month_key].append((eid, dt))
+            del weekly[(monday, sunday)]
 
-    reports.sort(key=lambda r: (r['week_start'], r['employee']))
-    return render_template(
-        'report.html',
-        reports=reports,
-        loc=loc,
-        locations=Location.query.all()
-    )
+    # Now build display structures
+    def summarize(entries):
+        by_emp = defaultdict(list)
+        for eid, dt in entries:
+            by_emp[eid].append(dt)
+        rows = []
+        for eid, times in by_emp.items():
+            times.sort()
+            stats = compute_shifts(times)
+            emp   = Employee.query.get(eid)
+            rows.append({
+                'employee': emp.name,
+                'total':    stats['total']
+            })
+        return rows
+
+    report_weeks = OrderedDict()
+    for (monday, sunday), entries in sorted(weekly.items()):
+        label = f"{monday:%-m/%-d/%y}–{sunday:%-m/%-d/%y}"
+        report_weeks[label] = summarize(entries)
+
+    report_months = OrderedDict()
+    for month_key, entries in sorted(monthly.items()):
+        # month_key = '2025-04', make it pretty:
+        dt = datetime.strptime(month_key, '%Y-%m')
+        label = dt.strftime('%B %Y')
+        report_months[label] = summarize(entries)
+
+    return render_template('report.html',
+                           weeks=report_weeks,
+                           months=report_months,
+                           loc=loc,
+                           locations=Location.query.all())
 
 @app.route('/manage_employees', methods=['GET','POST'])
 @login_required

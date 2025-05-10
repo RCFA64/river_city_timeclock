@@ -59,8 +59,15 @@
       </select>
     </div>
     <div class="col-auto">
-      <button id="btn-in"   name="type" value="IN"  class="btn btn-success" disabled>In</button>
-      <button id="btn-out"  name="type" value="OUT" class="btn btn-danger"  disabled>Out</button>
+        <button
+          type="submit"
+          id="toggle-btn"
+          class="btn btn-lg {% if next_type=='IN' %}btn-success{% else %}btn-danger{% endif %}"
+          style="min-width: 100px;"
+        >
+          {{ next_type }}
+        </button>
+      </div>
     </div>
   </form>
 
