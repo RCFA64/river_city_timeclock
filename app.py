@@ -54,11 +54,12 @@ with app.app_context():
             db.session.add(Location(name=name, lat=lat, lng=lng))
     db.session.commit()
 
-# Purge old punches nightly
+# Purge 5-month-old punches nightly
 def purge_old():
-    cutoff = datetime.utcnow() - timedelta(days=5*30)
-    Punch.query.filter(Punch.timestamp < cutoff).delete()
-    db.session.commit()
+    with app.app_context():
+        cutoff = datetime.utcnow() - timedelta(days=5*30)
+        Punch.query.filter(Punch.timestamp < cutoff).delete()
+        db.session.commit()
 
 sched = BackgroundScheduler()
 sched.add_job(purge_old, trigger='cron', hour=0, minute=0)
@@ -138,11 +139,20 @@ def punch():
     loc_id   = int(request.form['loc'])
     eid      = int(request.form['employee_id'])
     loc      = Location.query.get(loc_id)
-    user_lat = float(request.form.get('geo_lat', 0))
-    user_lng = float(request.form.get('geo_lng', 0))
+        # get the raw strings
+    lat_str = request.form.get('geo_lat', '')
+    lng_str = request.form.get('geo_lng', '')
+
+    # bail if we didn’t actually get coords
+    try:
+        user_lat = float(lat_str)
+        user_lng = float(lng_str)
+    except ValueError:
+        flash('Could not get your location. Make sure you allow location access and retry.', 'danger')
+        return redirect(url_for('index', loc=loc_id, emp=request.form.get('employee_id')))
 
     # Geo-fence: 200m radius
-    if haversine(user_lat, user_lng, loc.lat, loc.lng) > 5000:
+    if haversine(user_lat, user_lng, loc.lat, loc.lng) > 200:
         flash('You must be on-site to punch in/out.', 'danger')
         return redirect(url_for('index', loc=loc_id, emp=eid))
 

@@ -32,11 +32,6 @@
 
   <h1>Time Clock</h1>
 
-  <!-- Informational tooltip about 15-minute increments -->
-  <div class="alert alert-info" role="alert">
-    <strong>Note:</strong> The term <em>15-minute increments</em> refers to a time management method for increasing productivity. Each hour is divided into four 15-minute time blocks. In this way, a working day of 8 hours translates into 32 units.
-  </div>
-
   <!-- LOCATION SELECT (persisted) -->
   <form id="location-form" class="row g-2 mb-3">
     <div class="col-auto">
@@ -94,13 +89,22 @@
 
   <script>
     // 1) GEOLOCATION
+    const punchButtons = document.querySelectorAll('button[name="type"]');
+    // start disabled
+    punchButtons.forEach(b=> b.disabled = true);
+
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
-        document.getElementById('geo_lat').value = coords.latitude;
-        document.getElementById('geo_lng').value = coords.longitude;
-      },
-      err => alert('Could not get your location: ' + err.message)
-    );
+      document.getElementById('geo_lat').value = coords.latitude;
+      document.getElementById('geo_lng').value = coords.longitude;
+      // now enable
+      punchButtons.forEach(b=> b.disabled = false);
+    },
+    err => {
+      alert('Could not get your location: ' + err.message);
+      // you could leave them disabled or still allow manual punch
+    }
+  );
 
     // 2) LOCATION PERSISTENCE
     const locSelect = document.getElementById('location-select');
