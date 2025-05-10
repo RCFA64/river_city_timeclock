@@ -55,8 +55,14 @@ with app.app_context():
         ('Indianapolis', 39.6836058,  -86.1927711),
     ]
     for name, lat, lng in coords:
-        if not Location.query.filter_by(name=name).first():
+        loc = Location.query.filter_by(name=name).first()
+        if loc:
+            # update existing
+            loc.lat, loc.lng = lat, lng
+        else:
+            # create new
             db.session.add(Location(name=name, lat=lat, lng=lng))
+
     db.session.commit()
 
 # Purge 5-month-old punches nightly
