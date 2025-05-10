@@ -43,11 +43,15 @@ def load_user(user_id):
 # Bootstrap schema and seed locations
 with app.app_context():
     db.create_all()
-    coords = [
-        ('Sacramento',   38.5816, -121.4944),
-        ('Dallas',       32.7767,  -96.7970),
-        ('Houston',      29.7604,  -95.3698),
-        ('Indianapolis', 39.7684,  -86.1581),
+        coords = [
+        # Sacramento (your shop)
+        ('Sacramento',   38.535168, -121.3661184),
+        # Dallas (your shop)
+        ('Dallas',       32.5372008,  -96.7493993),
+        # Houston (your shop)
+        ('Houston',      29.835264,  -95.5383808),
+        # Indianapolis (your shop)
+        ('Indianapolis', 39.6836058,  -86.1927711),
     ]
     for name, lat, lng in coords:
         if not Location.query.filter_by(name=name).first():
@@ -56,6 +60,7 @@ with app.app_context():
 
 # Purge 5-month-old punches nightly
 def purge_old():
+    # when APScheduler fires, we need our own app context
     with app.app_context():
         cutoff = datetime.utcnow() - timedelta(days=5*30)
         Punch.query.filter(Punch.timestamp < cutoff).delete()
@@ -145,19 +150,37 @@ def punch():
         flash('Unable to get your location. Please allow location access and try again.', 'danger')
         return redirect(url_for('index', loc=request.form.get('loc')))
 
-    loc_id = int(request.form['loc'])
-    loc    = Location.query.get(loc_id)
+    # Pull out IDs
+    loc_id = int(request.form.get('loc', 0))
+    emp_id = request.form.get('employee_id')
+    if not emp_id:
+        flash('Please select an employee before punching.', 'warning')
+        return redirect(url_for('index', loc=loc_id))
+    eid = int(emp_id)
 
-    # Geo-fence: 200m radius
+    # Parse coords (some browsers may POST '' if geo not available)
+    geo_lat = request.form.get('geo_lat', '').strip()
+    geo_lng = request.form.get('geo_lng', '').strip()
+    try:
+        user_lat = float(geo_lat)
+        user_lng = float(geo_lng)
+    except ValueError:
+        flash('Could not get your location. Please allow location access and try again.', 'danger')
+        return redirect(url_for('index', loc=loc_id, emp=eid))
+
+    # Enforce on-site Haversine check
+    loc      = Location.query.get(loc_id)
     if haversine(user_lat, user_lng, loc.lat, loc.lng) > 200:
         flash('You must be on-site to punch in/out.', 'danger')
         return redirect(url_for('index', loc=loc_id, emp=eid))
 
-    # Create punch
-    p = Punch(employee_id=eid, type=request.form['type'], timestamp=datetime.utcnow())
+    # All good—record the punch
+    punch_type = request.form.get('type', 'IN')
+    p = Punch(employee_id=eid, type=punch_type, timestamp=datetime.utcnow())
     db.session.add(p)
     db.session.commit()
 
+    # Return them to their own feed
     return redirect(url_for('index', loc=loc_id, emp=eid))
 
 @app.route('/report')
