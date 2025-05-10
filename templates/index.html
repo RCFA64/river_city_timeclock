@@ -80,13 +80,24 @@
   </p>
 
   <!-- Live Feed (shows only selected employee’s punches) -->
-  <ul class="list-group" id="live-feed">
+  <table class="table table-striped" id="live-feed">
+  <thead>
+    <tr>
+      <th scope="col">Time</th>
+      <th scope="col">Name</th>
+      <th scope="col">Status</th>
+    </tr>
+  </thead>
+  <tbody>
     {% for entry in feed %}
-      <li class="list-group-item">
-        {{ entry.time_str }} – {{ entry.employee }} {{ entry.type }}
-      </li>
+    <tr>
+      <td>{{ entry.time_str }}</td>
+      <td>{{ entry.employee }}</td>
+      <td>{{ entry.type }}</td>
+    </tr>
     {% endfor %}
-  </ul>
+  </tbody>
+</table>
 
   <!-- Links -->
   <a href="{{ url_for('report', loc=sel) }}" class="btn btn-link mt-3">View Weekly Report</a>
