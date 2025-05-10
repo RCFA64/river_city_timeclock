@@ -59,8 +59,8 @@
       </select>
     </div>
     <div class="col-auto">
-      <button name="type" value="IN" class="btn btn-success">In</button>
-      <button name="type" value="OUT" class="btn btn-danger">Out</button>
+      <button id="btn-in"   name="type" value="IN"  class="btn btn-success" disabled>In</button>
+      <button id="btn-out"  name="type" value="OUT" class="btn btn-danger"  disabled>Out</button>
     </div>
   </form>
 
@@ -89,21 +89,16 @@
 
   <script>
     // 1) GEOLOCATION
-    const punchButtons = document.querySelectorAll('button[name="type"]');
-    // start disabled
-    punchButtons.forEach(b=> b.disabled = true);
+    const inBtn  = document.getElementById('btn-in');
+    const outBtn = document.getElementById('btn-out');
 
-    navigator.geolocation.getCurrentPosition(
-      ({ coords }) => {
+  navigator.geolocation.getCurrentPosition(
+    ({ coords }) => {
       document.getElementById('geo_lat').value = coords.latitude;
       document.getElementById('geo_lng').value = coords.longitude;
-      // now enable
-      punchButtons.forEach(b=> b.disabled = false);
+      inBtn.disabled = outBtn.disabled = false;    // now you can punch
     },
-    err => {
-      alert('Could not get your location: ' + err.message);
-      // you could leave them disabled or still allow manual punch
-    }
+    err => alert('Could not get your location: ' + err.message)
   );
 
     // 2) LOCATION PERSISTENCE

@@ -136,20 +136,17 @@ def index():
 
 @app.route('/punch', methods=['POST'])
 def punch():
-    loc_id   = int(request.form['loc'])
-    eid      = int(request.form['employee_id'])
-    loc      = Location.query.get(loc_id)
-        # get the raw strings
     lat_str = request.form.get('geo_lat', '')
     lng_str = request.form.get('geo_lng', '')
-
-    # bail if we didn’t actually get coords
     try:
         user_lat = float(lat_str)
         user_lng = float(lng_str)
     except ValueError:
-        flash('Could not get your location. Make sure you allow location access and retry.', 'danger')
-        return redirect(url_for('index', loc=loc_id, emp=request.form.get('employee_id')))
+        flash('Unable to get your location. Please allow location access and try again.', 'danger')
+        return redirect(url_for('index', loc=request.form.get('loc')))
+
+    loc_id = int(request.form['loc'])
+    loc    = Location.query.get(loc_id)
 
     # Geo-fence: 200m radius
     if haversine(user_lat, user_lng, loc.lat, loc.lng) > 200:
