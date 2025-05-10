@@ -43,7 +43,8 @@ def load_user(user_id):
 # Bootstrap schema and seed locations
 with app.app_context():
     db.create_all()
-        coords = [
+
+    coords = [
         # Sacramento (your shop)
         ('Sacramento',   38.535168, -121.3661184),
         # Dallas (your shop)
