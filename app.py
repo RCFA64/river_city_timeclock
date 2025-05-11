@@ -153,18 +153,18 @@ def punch():
         return redirect(url_for('index', loc=loc_id, emp=eid))
 
     # On-site Haversine check (allow within 200 m)
-loc = Location.query.get(loc_id)
-distance_km = haversine(user_lat, user_lng, loc.lat, loc.lng)
-current_app.logger.debug(
-    f"Punch check: user@({user_lat},{user_lng}), "
-    f"site@({loc.lat},{loc.lng}) -> {distance_km:.3f} km"
-)
-if distance_km > 0.2:   # 0.2 km = 200 m
-    flash(
-      f'You must be on-site to punch in/out. You are {(distance_km*1000):.0f} m away.',
-      'danger'
+    loc = Location.query.get(loc_id)
+    distance_km = haversine(user_lat, user_lng, loc.lat, loc.lng)
+    current_app.logger.debug(
+        f"Punch check: user@({user_lat},{user_lng}), "
+        f"site@({loc.lat},{loc.lng}) -> {distance_km:.3f} km"
     )
-    return redirect(url_for('index', loc=loc_id, emp=eid))
+    if distance_km > 0.2:   # 0.2 km = 200 m
+        flash(
+          f'You must be on-site to punch in/out. You are {(distance_km*1000):.0f} m away.',
+          'danger'
+        )
+        return redirect(url_for('index', loc=loc_id, emp=eid))
 
     # Always non-empty now!
     punch_type = request.form.get('type', 'IN')
