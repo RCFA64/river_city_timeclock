@@ -44,38 +44,41 @@
 
   <!-- Punch form -->
   <form id="punch-form" action="{{ url_for('punch') }}" method="post" class="row g-2 mb-4 align-items-center">
-    <input type="hidden" name="loc" value="{{ sel }}">
-    <input type="hidden" id="geo_lat" name="geo_lat">
-    <input type="hidden" id="geo_lng" name="geo_lng">
-    <div class="col-auto">
-      <select id="employee-select" name="employee_id" class="form-select" required>
-        <option value="">-- Select employee --</option>
-        {% for e in emps %}
-          <option value="{{e.id}}"
-            {% if emp and e.id==emp %}selected{% endif %}>
-            {{e.name}}
-          </option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="col-auto">
-      <!-- only one hidden type-field -->
-      <input type="hidden" id="type-field" name="type" value="">
-      <!-- single toggle submit button -->
-      <button
-        type="submit"
-        id="punch-btn"
-        class="btn btn-lg btn-secondary"
-        disabled
-      >Select name</button>
-    </div>
-  </form>
+  <input type="hidden" name="loc" value="{{ sel }}">
+  <input type="hidden" id="geo_lat" name="geo_lat">
+  <input type="hidden" id="geo_lng" name="geo_lng">
+  <input type="hidden" id="type-field" name="type" value="">
+
+  <div class="col-auto">
+    <select id="employee-select" name="employee_id" class="form-select" required>
+      <option value="">-- Select employee --</option>
+      {% for e in emps %}
+        <option value="{{e.id}}" {% if emp and e.id==emp %}selected{% endif %}>
+          {{ e.name }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="col-auto">
+    <button type="submit"
+            id="punch-btn"
+            class="btn btn-lg btn-secondary"
+            disabled>
+      Select name
+    </button>
+  </div>
+</form>
 
   <!-- Current date -->
   <h2>{{ current_date }}</h2>
 
+  <p id="placeholder-msg" class="text-center mt-3" style="display:none;">
+    Have a wonderful day!
+  </p>
+
   <!-- Timecard table -->
-  <table class="table table-dark table-striped mt-3">
+  <table id="time-table" class="table table-striped mt-3">
     <thead>
       <tr><th>Time</th><th>Name</th><th>Status</th></tr>
     </thead>
@@ -112,78 +115,65 @@
     err => console.warn('Could not get location:', err.message)
   );
 
-  // 2) DOM refs
-  const locSelect   = document.getElementById('location-select');
-  const empSelect   = document.getElementById('employee-select');
-  const punchBtn    = document.getElementById('punch-btn');
-  const typeField   = document.getElementById('type-field');
-  const liveFeed    = document.getElementById('live-feed');
-  const placeholder = document.getElementById('placeholder-msg');
+  // grab elements
+  const locSelect    = document.getElementById('location-select');
+  const empSelect    = document.getElementById('employee-select');
+  const punchBtn     = document.getElementById('punch-btn');
+  const typeField    = document.getElementById('type-field');
+  const table        = document.getElementById('time-table');
+  const placeholder  = document.getElementById('placeholder-msg');
+  // carry any existing emp query-param from server
+  const empParam     = "{{ emp or '' }}";
 
-  // Pull emp param from URL if present
-  const qs       = new URLSearchParams(window.location.search);
-  const empParam = qs.get('emp') || '';
-
-  // 3) LOCATION PERSISTENCE
-  // automatically reload with saved loc/emp
-  const savedLoc = localStorage.getItem('selectedLoc');
-  const currentLoc = qs.get('loc') || savedLoc || '{{ sel }}';
-  locSelect.value = currentLoc;
-  localStorage.setItem('selectedLoc', currentLoc);
+  // 2) LOCATION persistence (keep emp in URL too)
   locSelect.addEventListener('change', () => {
-    const v = locSelect.value;
-    localStorage.setItem('selectedLoc', v);
-    window.location.search = `?loc=${v}` + (empParam ? `&emp=${empParam}` : '');
+    const q = '?loc=' + locSelect.value
+            + (empSelect.value ? '&emp=' + empSelect.value : '');
+    window.location.search = q;
   });
 
-  // 4) FEED TOGGLE
-  function updateFeed() {
+  // 3) SHOW/HIDE feed + reset button
+  function toggleFeed() {
     if (!empSelect.value) {
-      liveFeed.style.display    = 'none';
+      table.style.display       = 'none';
       placeholder.style.display = '';
+      punchBtn.disabled         = true;
     } else {
       placeholder.style.display = 'none';
-      liveFeed.style.display    = '';
+      table.style.display       = '';
+      punchBtn.disabled         = false;
     }
   }
 
-  // 5) BUTTON TOGGLE
+  // 4) BUTTON text/color & hidden field
   function updateButton() {
-    if (!empSelect.value) {
-      punchBtn.disabled    = true;
-      punchBtn.textContent = 'Select name';
-      punchBtn.className   = 'btn btn-lg btn-secondary';
-      typeField.value      = '';
-      return;
-    }
-    // enable
-    punchBtn.disabled = false;
+    // look at first row, 3rd column for last status
+    const firstRow = document.querySelector('#time-table tbody tr');
+    const lastType = firstRow
+      ? firstRow.cells[2].textContent.trim()
+      : 'OUT';
+    const nextType = (lastType === 'IN') ? 'OUT' : 'IN';
 
-    // Look at the top of the feed for last punch
-    const firstItem = liveFeed.querySelector('li');
-    let lastType = 'OUT';
-    if (firstItem) {
-      // your feed items look like "08:00 – John IN"
-      const parts = firstItem.textContent.split('–')[1].trim().split(' ');
-      lastType = parts[1];  // "IN" or "OUT"
-    }
-    const nextType = lastType === 'IN' ? 'OUT' : 'IN';
-
-    punchBtn.textContent = nextType;
-    punchBtn.className   = 'btn btn-lg ' + (nextType === 'IN' ? 'btn-success' : 'btn-danger');
-    typeField.value      = nextType;
+    punchBtn.textContent           = nextType;
+    punchBtn.className             = 'btn btn-lg ' +
+                                     (nextType === 'IN'
+                                       ? 'btn-success'
+                                       : 'btn-danger');
+    typeField.value                = nextType;
   }
 
-  // 6) When you pick a name…
-  empSelect.value = empParam;
+  // when employee changes, reload with new emp
   empSelect.addEventListener('change', () => {
-    const loc = locSelect.value;
-    window.location.search = `?loc=${loc}&emp=${empSelect.value}`;
+    const q = '?loc=' + locSelect.value
+            + '&emp=' + empSelect.value;
+    window.location.search = q;
   });
 
-  // 7) Initialize on load
-  updateFeed();
-  updateButton();
+  // on page load
+  document.addEventListener('DOMContentLoaded', () => {
+    toggleFeed();
+    updateButton();
+  });
 </script>
 </body>
 </html>
