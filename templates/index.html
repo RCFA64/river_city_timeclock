@@ -43,33 +43,45 @@
   </form>
 
   <!-- Punch form -->
-  <form id="punch-form" action="{{ url_for('punch') }}" method="post" class="row g-2 mb-4 align-items-center">
-     <input type="hidden" name="loc" value="{{ sel }}">
-     <input type="hidden" id="geo_lat" name="geo_lat">
-     <input type="hidden" id="geo_lng" name="geo_lng">
-     <!-- one hidden type field that JS updates -->
-     <input type="hidden" id="type-field" name="type" value="IN">
+  <form id="punch-form"
+      action="{{ url_for('punch') }}"
+      method="post"
+      class="row g-2 mb-4 align-items-center">
 
-     <div class="col-auto">
-       <select id="employee-select" name="employee_id" class="form-select" required>
-         <option value="">-- Select employee --</option>
-         {% for e in emps %}
-           <option value="{{ e.id }}" {% if emp and e.id==emp %}selected{% endif %}>
-             {{ e.name }}
-           </option>
-         {% endfor %}
-       </select>
-     </div>
+  <input type="hidden" name="loc"    value="{{ sel }}">
+  <input type="hidden" id="geo_lat"   name="geo_lat">
+  <input type="hidden" id="geo_lng"   name="geo_lng">
+  <input type="hidden" id="type-field" name="type" value="">
 
-     <div class="col-auto">
-       <!-- now a submit button that your JS toggles -->
-       <button 
-         type="submit" 
-         id="punch-btn" 
-         class="btn btn-lg btn-success"
-       >IN</button>
-     </div>
-   </form>
+  <div class="col-auto">
+    <select id="employee-select"
+            name="employee_id"
+            class="form-select"
+            required>
+      <option value="">-- Select employee --</option>
+      {% for e in emps %}
+        <option value="{{ e.id }}" {% if emp and e.id==emp %}selected{% endif %}>
+          {{ e.name }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="col-auto">
+    <!-- IN button -->
+    <button type="submit"
+            id="in-btn"
+            class="btn btn-lg btn-success">
+      IN
+    </button>
+    <!-- OUT button -->
+    <button type="submit"
+            id="out-btn"
+            class="btn btn-lg btn-danger d-none">
+      OUT
+    </button>
+  </div>
+</form>
 
   <!-- Current date -->
   <h2>{{ current_date }}</h2>
@@ -107,76 +119,80 @@
 
 
   <script>
-  const form     = document.getElementById('punch-form');
-  const latField = document.getElementById('geo_lat');
-  const lngField = document.getElementById('geo_lng');
+  // 1) GEOLOCATION (with high-accuracy)
+  navigator.geolocation.getCurrentPosition(
+    ({ coords }) => {
+      document.getElementById('geo_lat').value = coords.latitude;
+      document.getElementById('geo_lng').value = coords.longitude;
+    },
+    err => {
+      console.warn('Could not get location:', err.message);
+      // you’ll still get the flash on submit if these stay blank
+    },
+    { enableHighAccuracy: true }
+  );
 
-  // 1) INTERCEPT THE SUBMIT AND FETCH LOCATION AT THAT MOMENT
-  form.addEventListener('submit', e => {
-    e.preventDefault(); // hold the form
-    navigator.geolocation.getCurrentPosition(
-      ({ coords }) => {
-        latField.value = coords.latitude;
-        lngField.value = coords.longitude;
-        form.submit();  // now submit for real
-      },
-      err => {
-        // we’ll still show your flash on the server side
-        alert('Could not get your location: ' + err.message);
-      },
-      { enableHighAccuracy: true }
-    );
-  });
+  // grab elements
+  const locSelect   = document.getElementById('location-select');
+  const empSelect   = document.getElementById('employee-select');
+  const inBtn       = document.getElementById('in-btn');
+  const outBtn      = document.getElementById('out-btn');
+  const typeField   = document.getElementById('type-field');
+  const table       = document.getElementById('time-table');
+  const placeholder = document.getElementById('placeholder-msg');
 
   // 2) LOCATION persistence (keep emp in URL too)
-  const locSelect = document.getElementById('location-select');
-  const empSelect = document.getElementById('employee-select');
   locSelect.addEventListener('change', () => {
     const q = '?loc=' + locSelect.value
             + (empSelect.value ? '&emp=' + empSelect.value : '');
     window.location.search = q;
   });
 
-  // 3) SHOW/HIDE feed + reset button
-  const punchBtn    = document.getElementById('toggle-btn');
-  const table       = document.getElementById('time-table');
-  const placeholder = document.getElementById('placeholder-msg');
-
+  // 3) SHOW/HIDE feed + disable both buttons if no emp
   function toggleFeed() {
     if (!empSelect.value) {
       table.style.display       = 'none';
       placeholder.style.display = '';
-      punchBtn.disabled         = true;
+      inBtn.disabled            = outBtn.disabled = true;
     } else {
       placeholder.style.display = 'none';
       table.style.display       = '';
-      punchBtn.disabled         = false;
+      // leave individual button enablement to updateButtons()
     }
   }
 
-  // 4) UPDATE the IN/OUT button
-  const typeField = document.getElementById('type-field');
-  function updateButton() {
+  // 4) UPDATE which button is shown & set hidden type-field
+  function updateButtons() {
     const firstRow = document.querySelector('#time-table tbody tr');
     const lastType = firstRow
       ? firstRow.cells[2].textContent.trim()
       : 'OUT';
-    const nextType = (lastType === 'IN') ? 'OUT' : 'IN';
-
-    punchBtn.textContent = nextType;
-    punchBtn.className   = 'btn btn-lg ' + (nextType==='IN' ? 'btn-success' : 'btn-danger');
-    typeField.value      = nextType;
+    if (lastType === 'IN') {
+      inBtn.classList.add('d-none');
+      outBtn.classList.remove('d-none');
+      inBtn.disabled  = true;
+      outBtn.disabled = false;
+      typeField.value = 'OUT';
+    } else {
+      outBtn.classList.add('d-none');
+      inBtn.classList.remove('d-none');
+      outBtn.disabled = true;
+      inBtn.disabled  = false;
+      typeField.value = 'IN';
+    }
   }
 
-  // 5) When employee changes, reload with new emp
+  // when employee changes → reload + re-compute feed/buttons
   empSelect.addEventListener('change', () => {
-    window.location.search = `?loc=${locSelect.value}&emp=${empSelect.value}`;
+    const q = '?loc=' + locSelect.value
+            + '&emp=' + empSelect.value;
+    window.location.search = q;
   });
 
-  // 6) On load
+  // on initial load:
   document.addEventListener('DOMContentLoaded', () => {
     toggleFeed();
-    updateButton();
+    updateButtons();
   });
 </script>
 </body>
