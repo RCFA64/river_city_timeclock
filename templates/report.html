@@ -3,6 +3,19 @@
 {% block content %}
   <h1 class="mb-4">Weekly & Monthly Reports</h1>
 
+  <!-- ←— location selector -->
+   <form method="get" action="{{ url_for('report') }}" class="mb-4">
+     <select name="loc" class="form-select w-auto" onchange="this.form.submit()">
+       {% for L in locations %}
+         <option value="{{ L.id }}" {% if L.id == loc %}selected{% endif %}>
+           {{ L.name }}
+         </option>
+       {% endfor %}
+     </select>
+   </form>
+ 
+   <!-- Weekly sections -->
+   {% for week_label, rows in weeks.items() %}
   <!-- Weekly sections -->
   {% for week_label, rows in weeks.items() %}
     <h3 class="mt-4 text-light">{{ week_label }}</h3>
