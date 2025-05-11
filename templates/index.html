@@ -48,10 +48,10 @@
       method="post"
       class="row g-2 mb-4 align-items-center">
 
-  <input type="hidden" name="loc"    value="{{ sel }}">
-  <input type="hidden" id="geo_lat"   name="geo_lat">
-  <input type="hidden" id="geo_lng"   name="geo_lng">
-  <input type="hidden" id="type-field" name="type" value="">
+  <!-- location + geo inputs stay the same -->
+  <input type="hidden" name="loc" value="{{ sel }}">
+  <input type="hidden" id="geo_lat" name="geo_lat">
+  <input type="hidden" id="geo_lng" name="geo_lng">
 
   <div class="col-auto">
     <select id="employee-select"
@@ -60,22 +60,27 @@
             required>
       <option value="">-- Select employee --</option>
       {% for e in emps %}
-        <option value="{{ e.id }}" {% if emp and e.id==emp %}selected{% endif %}>
-          {{ e.name }}
+        <option value="{{e.id}}"
+          {% if emp and e.id==emp %}selected{% endif %}>
+          {{e.name}}
         </option>
       {% endfor %}
     </select>
   </div>
 
   <div class="col-auto">
-    <!-- IN button -->
+    <!-- two submit buttons, each carries the punch type -->
     <button type="submit"
+            name="type"
+            value="IN"
             id="in-btn"
             class="btn btn-lg btn-success">
       IN
     </button>
-    <!-- OUT button -->
+
     <button type="submit"
+            name="type"
+            value="OUT"
             id="out-btn"
             class="btn btn-lg btn-danger d-none">
       OUT
@@ -119,16 +124,13 @@
 
 
   <script>
-  // 1) GEOLOCATION (with high-accuracy)
+  // 1) GEOLOCATION (high accuracy)
   navigator.geolocation.getCurrentPosition(
     ({ coords }) => {
       document.getElementById('geo_lat').value = coords.latitude;
       document.getElementById('geo_lng').value = coords.longitude;
     },
-    err => {
-      console.warn('Could not get location:', err.message);
-      // you’ll still get the flash on submit if these stay blank
-    },
+    err => console.warn('Could not get location:', err.message),
     { enableHighAccuracy: true }
   );
 
@@ -137,14 +139,13 @@
   const empSelect   = document.getElementById('employee-select');
   const inBtn       = document.getElementById('in-btn');
   const outBtn      = document.getElementById('out-btn');
-  const typeField   = document.getElementById('type-field');
   const table       = document.getElementById('time-table');
   const placeholder = document.getElementById('placeholder-msg');
 
-  // 2) LOCATION persistence (keep emp in URL too)
+  // 2) LOCATION persistence
   locSelect.addEventListener('change', () => {
-    const q = '?loc=' + locSelect.value
-            + (empSelect.value ? '&emp=' + empSelect.value : '');
+    const q = '?loc=' + locSelect.value +
+              (empSelect.value ? '&emp=' + empSelect.value : '');
     window.location.search = q;
   });
 
@@ -153,15 +154,15 @@
     if (!empSelect.value) {
       table.style.display       = 'none';
       placeholder.style.display = '';
-      inBtn.disabled            = outBtn.disabled = true;
+      inBtn.disabled = outBtn.disabled = true;
     } else {
       placeholder.style.display = 'none';
       table.style.display       = '';
-      // leave individual button enablement to updateButtons()
+      // leave enable/disable to updateButtons()
     }
   }
 
-  // 4) UPDATE which button is shown & set hidden type-field
+  // 4) SHOW exactly one button based on last punch
   function updateButtons() {
     const firstRow = document.querySelector('#time-table tbody tr');
     const lastType = firstRow
@@ -170,26 +171,23 @@
     if (lastType === 'IN') {
       inBtn.classList.add('d-none');
       outBtn.classList.remove('d-none');
-      inBtn.disabled  = true;
       outBtn.disabled = false;
-      typeField.value = 'OUT';
+      inBtn.disabled  = true;
     } else {
       outBtn.classList.add('d-none');
       inBtn.classList.remove('d-none');
-      outBtn.disabled = true;
       inBtn.disabled  = false;
-      typeField.value = 'IN';
+      outBtn.disabled = true;
     }
   }
 
-  // when employee changes → reload + re-compute feed/buttons
+  // 5) When employee changes
   empSelect.addEventListener('change', () => {
-    const q = '?loc=' + locSelect.value
-            + '&emp=' + empSelect.value;
-    window.location.search = q;
+    window.location.search =
+      `?loc=${locSelect.value}&emp=${empSelect.value}`;
   });
 
-  // on initial load:
+  // 6) On load
   document.addEventListener('DOMContentLoaded', () => {
     toggleFeed();
     updateButtons();
