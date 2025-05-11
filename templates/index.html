@@ -47,7 +47,6 @@
     <input type="hidden" name="loc" value="{{ sel }}">
     <input type="hidden" id="geo_lat" name="geo_lat">
     <input type="hidden" id="geo_lng" name="geo_lng">
-    <input type="hidden" id="type-field" name="type" value="">
     <div class="col-auto">
       <select id="employee-select" name="employee_id" class="form-select" required>
         <option value="">-- Select employee --</option>
@@ -60,14 +59,16 @@
       </select>
     </div>
     <div class="col-auto">
-      <input type="hidden" id="type-field" name="type" value="IN">
-      <button 
-        type="button" 
-        id="toggle-btn" 
-        class="btn btn-lg"
-        style="background-color:#28a745;color:white"
-    >IN</button>
-  </div>
+      <!-- only one hidden type-field -->
+      <input type="hidden" id="type-field" name="type" value="">
+      <!-- single toggle submit button -->
+      <button
+        type="submit"
+        id="punch-btn"
+        class="btn btn-lg btn-secondary"
+        disabled
+      >Select name</button>
+    </div>
   </form>
 
   <!-- Current date -->
@@ -111,56 +112,78 @@
     err => console.warn('Could not get location:', err.message)
   );
 
-  // 2) CARRY THROUGH URL PARAMS
-  const empParam = "{{ emp or '' }}";
+  // 2) DOM refs
+  const locSelect   = document.getElementById('location-select');
+  const empSelect   = document.getElementById('employee-select');
+  const punchBtn    = document.getElementById('punch-btn');
+  const typeField   = document.getElementById('type-field');
+  const liveFeed    = document.getElementById('live-feed');
+  const placeholder = document.getElementById('placeholder-msg');
+
+  // Pull emp param from URL if present
+  const qs       = new URLSearchParams(window.location.search);
+  const empParam = qs.get('emp') || '';
 
   // 3) LOCATION PERSISTENCE
-  const locSelect = document.getElementById('location-select');
+  // automatically reload with saved loc/emp
+  const savedLoc = localStorage.getItem('selectedLoc');
+  const currentLoc = qs.get('loc') || savedLoc || '{{ sel }}';
+  locSelect.value = currentLoc;
+  localStorage.setItem('selectedLoc', currentLoc);
   locSelect.addEventListener('change', () => {
-    window.location.search = `?loc=${locSelect.value}${empParam ? `&emp=${empParam}` : ''}`;
+    const v = locSelect.value;
+    localStorage.setItem('selectedLoc', v);
+    window.location.search = `?loc=${v}` + (empParam ? `&emp=${empParam}` : '');
   });
 
-  // 4) EMPLOYEE SELECTION → reload with both loc & emp
-  const empSelect = document.getElementById('employee-select');
-  empSelect.addEventListener('change', () => {
-    window.location.search = `?loc=${locSelect.value}&emp=${empSelect.value}`;
-  });
+  // 4) FEED TOGGLE
+  function updateFeed() {
+    if (!empSelect.value) {
+      liveFeed.style.display    = 'none';
+      placeholder.style.display = '';
+    } else {
+      placeholder.style.display = 'none';
+      liveFeed.style.display    = '';
+    }
+  }
 
-  // 5) PUNCH-BUTTON TOGGLE
-  // HTML must have:
-  //   <input type="hidden" id="type-field" name="type" value="">
-  //   <button type="submit" id="punch-btn" class="btn btn-lg btn-secondary" disabled>
-  //     Select a name
-  //   </button>
-  const punchBtn  = document.getElementById('punch-btn');
-  const typeField = document.getElementById('type-field');
-
+  // 5) BUTTON TOGGLE
   function updateButton() {
-    // no employee = disabled grey button
     if (!empSelect.value) {
       punchBtn.disabled    = true;
-      punchBtn.textContent = 'Select a name';
+      punchBtn.textContent = 'Select name';
       punchBtn.className   = 'btn btn-lg btn-secondary';
       typeField.value      = '';
       return;
     }
-
-    // employee chosen → enabled button
+    // enable
     punchBtn.disabled = false;
 
-    // look at your table’s first row to see last punch
-    const row      = document.querySelector('#live-feed tbody tr');
-    const lastType = row ? row.cells[2].textContent.trim() : 'OUT';
-    const nextType = (lastType === 'IN') ? 'OUT' : 'IN';
+    // Look at the top of the feed for last punch
+    const firstItem = liveFeed.querySelector('li');
+    let lastType = 'OUT';
+    if (firstItem) {
+      // your feed items look like "08:00 – John IN"
+      const parts = firstItem.textContent.split('–')[1].trim().split(' ');
+      lastType = parts[1];  // "IN" or "OUT"
+    }
+    const nextType = lastType === 'IN' ? 'OUT' : 'IN';
 
     punchBtn.textContent = nextType;
     punchBtn.className   = 'btn btn-lg ' + (nextType === 'IN' ? 'btn-success' : 'btn-danger');
     typeField.value      = nextType;
   }
 
-  // run on page load
+  // 6) When you pick a name…
+  empSelect.value = empParam;
+  empSelect.addEventListener('change', () => {
+    const loc = locSelect.value;
+    window.location.search = `?loc=${loc}&emp=${empSelect.value}`;
+  });
+
+  // 7) Initialize on load
+  updateFeed();
   updateButton();
 </script>
-
 </body>
 </html>
