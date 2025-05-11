@@ -144,13 +144,20 @@ def punch():
 
     eid = int(emp_val)
 
-    # Parse geo inputs once
-    try:
-        user_lat = float(request.form['geo_lat'])
-        user_lng = float(request.form['geo_lng'])
-    except (KeyError, ValueError):
-        flash('Could not get your location. Please allow location access and try again.', 'danger')
-        return redirect(url_for('index', loc=loc_id, emp=eid))
+    # Pull out IDs…
+     loc_id = int(request.form['loc'])
+     emp_id = request.form.get('employee_id')
+     …
+
+     # Now parse *once*
+     geo_lat = request.form.get('geo_lat','').strip()
+     geo_lng = request.form.get('geo_lng','').strip()
+     try:
+         user_lat = float(geo_lat)
+         user_lng = float(geo_lng)
+     except ValueError:
+         flash('Could not get your location. Please allow location access and try again.','danger')
+         return redirect(url_for('index', loc=loc_id, emp=eid))
 
     # On-site Haversine check (allow within 200 m)
     loc = Location.query.get(loc_id)
