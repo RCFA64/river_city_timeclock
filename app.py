@@ -144,12 +144,7 @@ def punch():
 
     eid = int(emp_val)
 
-    # Pull out IDs…
-     loc_id = int(request.form['loc'])
-     emp_id = request.form.get('employee_id')
-     …
-
-     # Now parse *once*
+    # Now parse *once*
      geo_lat = request.form.get('geo_lat','').strip()
      geo_lng = request.form.get('geo_lng','').strip()
      try:
