@@ -107,28 +107,30 @@
 
 
   <script>
-  // 1) GEOLOCATION
-  navigator.geolocation.getCurrentPosition(
-    ({ coords }) => {
-      document.getElementById('geo_lat').value = coords.latitude;
-      document.getElementById('geo_lng').value = coords.longitude;
-    },
-    err => console.warn('Could not get location:', err.message)
-    { enableHighAccuracy: true }
-  );
+  const form     = document.getElementById('punch-form');
+  const latField = document.getElementById('geo_lat');
+  const lngField = document.getElementById('geo_lng');
 
-
-  // grab elements
-  const locSelect    = document.getElementById('location-select');
-  const empSelect    = document.getElementById('employee-select');
-  const punchBtn     = document.getElementById('punch-btn');
-  const typeField    = document.getElementById('type-field');
-  const table        = document.getElementById('time-table');
-  const placeholder  = document.getElementById('placeholder-msg');
-  // carry any existing emp query-param from server
-  const empParam     = "{{ emp or '' }}";
+  // 1) INTERCEPT THE SUBMIT AND FETCH LOCATION AT THAT MOMENT
+  form.addEventListener('submit', e => {
+    e.preventDefault(); // hold the form
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        latField.value = coords.latitude;
+        lngField.value = coords.longitude;
+        form.submit();  // now submit for real
+      },
+      err => {
+        // we’ll still show your flash on the server side
+        alert('Could not get your location: ' + err.message);
+      },
+      { enableHighAccuracy: true }
+    );
+  });
 
   // 2) LOCATION persistence (keep emp in URL too)
+  const locSelect = document.getElementById('location-select');
+  const empSelect = document.getElementById('employee-select');
   locSelect.addEventListener('change', () => {
     const q = '?loc=' + locSelect.value
             + (empSelect.value ? '&emp=' + empSelect.value : '');
@@ -136,6 +138,10 @@
   });
 
   // 3) SHOW/HIDE feed + reset button
+  const punchBtn    = document.getElementById('toggle-btn');
+  const table       = document.getElementById('time-table');
+  const placeholder = document.getElementById('placeholder-msg');
+
   function toggleFeed() {
     if (!empSelect.value) {
       table.style.display       = 'none';
@@ -148,31 +154,26 @@
     }
   }
 
-  // 4) BUTTON text/color & hidden field
+  // 4) UPDATE the IN/OUT button
+  const typeField = document.getElementById('type-field');
   function updateButton() {
-    // look at first row, 3rd column for last status
     const firstRow = document.querySelector('#time-table tbody tr');
     const lastType = firstRow
       ? firstRow.cells[2].textContent.trim()
       : 'OUT';
     const nextType = (lastType === 'IN') ? 'OUT' : 'IN';
 
-    punchBtn.textContent           = nextType;
-    punchBtn.className             = 'btn btn-lg ' +
-                                     (nextType === 'IN'
-                                       ? 'btn-success'
-                                       : 'btn-danger');
-    typeField.value                = nextType;
+    punchBtn.textContent = nextType;
+    punchBtn.className   = 'btn btn-lg ' + (nextType==='IN' ? 'btn-success' : 'btn-danger');
+    typeField.value      = nextType;
   }
 
-  // when employee changes, reload with new emp
+  // 5) When employee changes, reload with new emp
   empSelect.addEventListener('change', () => {
-    const q = '?loc=' + locSelect.value
-            + '&emp=' + empSelect.value;
-    window.location.search = q;
+    window.location.search = `?loc=${locSelect.value}&emp=${empSelect.value}`;
   });
 
-  // on page load
+  // 6) On load
   document.addEventListener('DOMContentLoaded', () => {
     toggleFeed();
     updateButton();
