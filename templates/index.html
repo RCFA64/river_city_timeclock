@@ -65,7 +65,7 @@
        <!-- now a submit button that your JS toggles -->
        <button 
          type="submit" 
-         id="toggle-btn" 
+         id="punch-btn" 
          class="btn btn-lg btn-success"
        >IN</button>
      </div>
@@ -114,7 +114,9 @@
       document.getElementById('geo_lng').value = coords.longitude;
     },
     err => console.warn('Could not get location:', err.message)
+    { enableHighAccuracy: true }
   );
+
 
   // grab elements
   const locSelect    = document.getElementById('location-select');
