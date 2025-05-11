@@ -44,31 +44,32 @@
 
   <!-- Punch form -->
   <form id="punch-form" action="{{ url_for('punch') }}" method="post" class="row g-2 mb-4 align-items-center">
-  <input type="hidden" name="loc" value="{{ sel }}">
-  <input type="hidden" id="geo_lat" name="geo_lat">
-  <input type="hidden" id="geo_lng" name="geo_lng">
-  <input type="hidden" id="type-field" name="type" value="">
+     <input type="hidden" name="loc" value="{{ sel }}">
+     <input type="hidden" id="geo_lat" name="geo_lat">
+     <input type="hidden" id="geo_lng" name="geo_lng">
+     <!-- one hidden type field that JS updates -->
+     <input type="hidden" id="type-field" name="type" value="IN">
 
-  <div class="col-auto">
-    <select id="employee-select" name="employee_id" class="form-select" required>
-      <option value="">-- Select employee --</option>
-      {% for e in emps %}
-        <option value="{{e.id}}" {% if emp and e.id==emp %}selected{% endif %}>
-          {{ e.name }}
-        </option>
-      {% endfor %}
-    </select>
-  </div>
+     <div class="col-auto">
+       <select id="employee-select" name="employee_id" class="form-select" required>
+         <option value="">-- Select employee --</option>
+         {% for e in emps %}
+           <option value="{{ e.id }}" {% if emp and e.id==emp %}selected{% endif %}>
+             {{ e.name }}
+           </option>
+         {% endfor %}
+       </select>
+     </div>
 
-  <div class="col-auto">
-    <button type="submit"
-            id="punch-btn"
-            class="btn btn-lg btn-secondary"
-            disabled>
-      Select name
-    </button>
-  </div>
-</form>
+     <div class="col-auto">
+       <!-- now a submit button that your JS toggles -->
+       <button 
+         type="submit" 
+         id="toggle-btn" 
+         class="btn btn-lg btn-success"
+       >IN</button>
+     </div>
+   </form>
 
   <!-- Current date -->
   <h2>{{ current_date }}</h2>
