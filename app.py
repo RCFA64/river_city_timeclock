@@ -145,14 +145,14 @@ def punch():
     eid = int(emp_val)
 
     # Now parse *once*
-     geo_lat = request.form.get('geo_lat','').strip()
-     geo_lng = request.form.get('geo_lng','').strip()
-     try:
-         user_lat = float(geo_lat)
-         user_lng = float(geo_lng)
-     except ValueError:
-         flash('Could not get your location. Please allow location access and try again.','danger')
-         return redirect(url_for('index', loc=loc_id, emp=eid))
+    geo_lat = request.form.get('geo_lat','').strip()
+    geo_lng = request.form.get('geo_lng','').strip()
+    try:
+        user_lat = float(geo_lat)
+        user_lng = float(geo_lng)
+    except ValueError:
+        flash('Could not get your location. Please allow location access and try again.','danger')
+        return redirect(url_for('index', loc=loc_id, emp=eid))
 
     # On-site Haversine check (allow within 200 m)
     loc = Location.query.get(loc_id)
