@@ -52,7 +52,7 @@
   <input type="hidden" name="loc" value="{{ sel }}">
   <input type="hidden" id="geo_lat" name="geo_lat">
   <input type="hidden" id="geo_lng" name="geo_lng">
-
+  <input type="hidden" id="geo_acc" name="geo_acc">
   <div class="col-auto">
     <select id="employee-select"
             name="employee_id"
@@ -129,9 +129,10 @@
     ({ coords }) => {
       document.getElementById('geo_lat').value = coords.latitude;
       document.getElementById('geo_lng').value = coords.longitude;
+      document.getElementById('geo_acc').value = coords.accuracy;
     },
     err => console.warn('Could not get location:', err.message),
-    { enableHighAccuracy: true }
+    { enableHighAccuracy: true, timeout: 10_000, maximumAge: 0 }
   );
 
   // grab elements
