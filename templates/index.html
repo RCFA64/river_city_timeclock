@@ -50,9 +50,6 @@
 
   <!-- location + geo inputs stay the same -->
   <input type="hidden" name="loc" value="{{ sel }}">
-  <input type="hidden" id="geo_lat" name="geo_lat">
-  <input type="hidden" id="geo_lng" name="geo_lng">
-  <input type="hidden" id="geo_acc" name="geo_acc">
   <div class="col-auto">
     <select id="employee-select"
             name="employee_id"
@@ -87,6 +84,30 @@
     </button>
   </div>
 </form>
+
+<!-- ─── ADD: QR Code Display Section ───────────────────────────────── -->
+ <h2>Scan this QR code on your phone to clock In/Out</h2>
+ <div id="qrcode" style="margin-bottom: 1em;"></div>
+ <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+ <script>
+   async function refreshQR() {
+     try {
+       const res = await fetch('/token');
+       const { token } = await res.json();
+       document.getElementById('qrcode').innerHTML = '';
+       new QRCode(document.getElementById('qrcode'), {
+         text: token,
+         width: 200,
+         height: 200
+       });
+     } catch (e) {
+       console.error('Failed to load token', e);
+     }
+   }
+   // load immediately, then refresh every 60 seconds
+   refreshQR();
+   setInterval(refreshQR, 60000);
+ </script>
 
   <!-- Current date -->
   <h2>{{ current_date }}</h2>
@@ -124,16 +145,6 @@
 
 
   <script>
-  // 1) GEOLOCATION (high accuracy)
-  navigator.geolocation.getCurrentPosition(
-    ({ coords }) => {
-      document.getElementById('geo_lat').value = coords.latitude;
-      document.getElementById('geo_lng').value = coords.longitude;
-      document.getElementById('geo_acc').value = coords.accuracy;
-    },
-    err => console.warn('Could not get location:', err.message),
-    { enableHighAccuracy: true, timeout: 10_000, maximumAge: 0 }
-  );
 
   // grab elements
   const locSelect   = document.getElementById('location-select');

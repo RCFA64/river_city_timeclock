@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, current_app
+from flask import Flask, render_template, request, redirect, url_for, flash, current_app, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import (
     LoginManager, login_user, logout_user,
@@ -12,8 +12,10 @@ from utils import compute_shifts
 import math
 import os
 from dotenv import load_dotenv
+import uuid
+import time
+import threading
 
-# Per-location timezones
 TIMEZONES = {
     'Sacramento':   'America/Los_Angeles',
     'Dallas':       'America/Chicago',
@@ -35,6 +37,8 @@ login_manager.login_view = 'login'
 login_manager.init_app(app)
 load_dotenv()
 
+# start token-rotator in background
+threading.Thread(target=rotate_token, daemon=True).start()
 # User loader for Flask-Login
 @login_manager.user_loader
 def load_user(user_id):
@@ -77,14 +81,21 @@ sched = BackgroundScheduler()
 sched.add_job(purge_old, trigger='cron', hour=0, minute=0)
 sched.start()
 
-# Haversine distance (meters)
-def haversine(lat1, lon1, lat2, lon2):
-    R = 6371000
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dl = math.radians(lon2 - lon1)
-    a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dl/2)**2
-    return 2 * R * math.asin(math.sqrt(a))
+# QR-token globals and rotating thread
+current_token = None
+token_expiry  = 0
+TOKEN_TTL     = 60   # seconds
+
+def rotate_token():
+    global current_token, token_expiry
+    while True:
+        new_tok = str(uuid.uuid4())[:8]
+        current_token = new_tok
+        token_expiry  = time.time() + TOKEN_TTL
+        time.sleep(TOKEN_TTL)
+
+# start token-rotator in background
+threading.Thread(target=rotate_token, daemon=True).start()
 
 @app.route('/')
 def index():
@@ -144,30 +155,6 @@ def punch():
 
     eid = int(emp_val)
 
-    # Now parse *once*
-    geo_lat = request.form.get('geo_lat','').strip()
-    geo_lng = request.form.get('geo_lng','').strip()
-    try:
-        user_lat = float(geo_lat)
-        user_lng = float(geo_lng)
-    except ValueError:
-        flash('Could not get your location. Please allow location access and try again.','danger')
-        return redirect(url_for('index', loc=loc_id, emp=eid))
-
-    # On-site Haversine check (allow within 200 m)
-    loc = Location.query.get(loc_id)
-    distance_km = haversine(user_lat, user_lng, loc.lat, loc.lng)
-    current_app.logger.debug(
-        f"Punch check: user@({user_lat},{user_lng}), "
-        f"site@({loc.lat},{loc.lng}) -> {distance_km:.3f} km"
-    )
-    if distance_km > 0.2:   # 0.2 km = 200 m
-        flash(
-          f'You must be on-site to punch in/out. You are {(distance_km*1000):.0f} m away.',
-          'danger'
-        )
-        return redirect(url_for('index', loc=loc_id, emp=eid))
-
     # Always non-empty now!
     punch_type = request.form.get('type', 'IN')
     p = Punch(employee_id=eid, type=punch_type, timestamp=datetime.utcnow())
@@ -175,6 +162,36 @@ def punch():
     db.session.commit()
 
     return redirect(url_for('index', loc=loc_id, emp=eid))
+
+@app.route('/token')
+def get_token():
+    return jsonify({
+        'token':      current_token,
+        'expires_in': max(0, int(token_expiry - time.time()))
+    })
+
+@app.route('/scan')
+@login_required
+def scan_page():
+    # scan.html should include your jsQR-based scanner
+    return render_template('scan.html')
+
+@app.route('/clock', methods=['POST'])
+@login_required
+def clock():
+    data = request.get_json() or {}
+    tok  = data.get('token', '')
+    act  = data.get('action', 'IN')     # e.g. "IN" or "OUT"
+
+    if tok != current_token:
+        return jsonify({'success': False, 'error': 'Invalid or expired token'}), 400
+
+    # record punch for the logged-in user
+    p = Punch(employee_id=current_user.id, type=act, timestamp=datetime.utcnow())
+    db.session.add(p)
+    db.session.commit()
+
+    return jsonify({'success': True})
 
 @app.route('/report')
 @login_required
