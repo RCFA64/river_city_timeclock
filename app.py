@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, current_app, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, current_app
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import (
     LoginManager, login_user, logout_user,
@@ -10,9 +10,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from models import db, Location, Employee, Punch, User
 from utils import compute_shifts
 import math
-import uuid
-import time
-import threading
 import os
 from dotenv import load_dotenv
 
@@ -76,21 +73,6 @@ def purge_old():
         cutoff = datetime.utcnow() - timedelta(days=5*30)
         Punch.query.filter(Punch.timestamp < cutoff).delete()
         db.session.commit()
-
-current_token = None
-token_expiry  = 0
-TOKEN_TTL     = 60   # seconds
-
-def rotate_token():
-    global current_token, token_expiry
-    while True:
-        new_tok = str(uuid.uuid4())[:8]
-        current_token = new_tok
-        token_expiry  = time.time() + TOKEN_TTL
-        time.sleep(TOKEN_TTL)
-
-# ─── NOW start the token-rotator thread (after rotate_token is defined) ─────
-threading.Thread(target=rotate_token, daemon=True).start()
 
 @app.route('/')
 @login_required
@@ -158,36 +140,6 @@ def punch():
     db.session.commit()
 
     return redirect(url_for('index', loc=loc_id, emp=eid))
-
-@app.route('/token')
-def get_token():
-    return jsonify({
-        'token':      current_token,
-        'expires_in': max(0, int(token_expiry - time.time()))
-    })
-
-@app.route('/scan')
-@login_required
-def scan_page():
-    # scan.html should include your jsQR-based scanner
-    return render_template('scan.html')
-
-@app.route('/clock', methods=['POST'])
-@login_required
-def clock():
-    data = request.get_json() or {}
-    tok  = data.get('token', '')
-    act  = data.get('action', 'IN')     # e.g. "IN" or "OUT"
-
-    if tok != current_token:
-        return jsonify({'success': False, 'error': 'Invalid or expired token'}), 400
-
-    # record punch for the logged-in user
-    p = Punch(employee_id=current_user.id, type=act, timestamp=datetime.utcnow())
-    db.session.add(p)
-    db.session.commit()
-
-    return jsonify({'success': True})
 
 @app.route('/report')
 @login_required
