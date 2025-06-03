@@ -10,11 +10,11 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from models import db, Location, Employee, Punch, User
 from utils import compute_shifts
 import math
-import os
-from dotenv import load_dotenv
 import uuid
 import time
 import threading
+import os
+from dotenv import load_dotenv
 
 TIMEZONES = {
     'Sacramento':   'America/Los_Angeles',
@@ -24,21 +24,21 @@ TIMEZONES = {
 }
 
 app = Flask(__name__)
+
+load_dotenv()
+
 app.config.update(
     SECRET_KEY=os.environ['SECRET_KEY'],
     SQLALCHEMY_DATABASE_URI=os.environ['DATABASE_URL'],
     SQLALCHEMY_TRACK_MODIFICATIONS=False,
 )
 
-# Initialize extensions
+Initialize extensions
 db.init_app(app)
 login_manager = LoginManager()
 login_manager.login_view = 'login'
 login_manager.init_app(app)
-load_dotenv()
 
-# start token-rotator in background
-threading.Thread(target=rotate_token, daemon=True).start()
 # User loader for Flask-Login
 @login_manager.user_loader
 def load_user(user_id):
@@ -77,11 +77,6 @@ def purge_old():
         Punch.query.filter(Punch.timestamp < cutoff).delete()
         db.session.commit()
 
-sched = BackgroundScheduler()
-sched.add_job(purge_old, trigger='cron', hour=0, minute=0)
-sched.start()
-
-# QR-token globals and rotating thread
 current_token = None
 token_expiry  = 0
 TOKEN_TTL     = 60   # seconds
@@ -94,10 +89,11 @@ def rotate_token():
         token_expiry  = time.time() + TOKEN_TTL
         time.sleep(TOKEN_TTL)
 
-# start token-rotator in background
+# ─── NOW start the token-rotator thread (after rotate_token is defined) ─────
 threading.Thread(target=rotate_token, daemon=True).start()
 
 @app.route('/')
+@login_required
 def index():
     locs = Location.query.all()
     sel  = int(request.args.get('loc', locs[0].id if locs else 1))
