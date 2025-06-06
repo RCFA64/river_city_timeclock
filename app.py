@@ -213,124 +213,122 @@ def report():
                            loc=loc,
                            locations=Location.query.all())
 
+from flask import request, flash
+from collections import defaultdict
+import math
+
 @app.route('/weekly_report')
 @login_required
 def weekly_report():
     """
-    Show a detailed weekly time‐card for each employee at a given location.
-    Query parameters:
-      - loc:       integer Location.id
-      - week_start: optional ISO‐date string (YYYY-MM-DD) for that week’s Monday.
-                    If missing, defaults to the most recent Monday.
+    Detailed weekly report showing every IN/OUT for each employee, with a dropdown
+    to select any week (Monday) in the past 3 months.
+    Query params:
+      - loc:        integer Location.id
+      - week_start: ISO date string (YYYY-MM-DD) for the Monday to display
+                    If missing, defaults to this week’s Monday.
     """
-    # 1) Determine the Monday that starts the week
-    loc_id = int(request.args.get('loc', 1))
-    week_start_str = request.args.get('week_start')
-    tz = ZoneInfo(TIMEZONES[Location.query.get(loc_id).name])
 
+    # 1) Determine location
+    loc_id = int(request.args.get('loc', 1))
+    loc = Location.query.get(loc_id)
+    if not loc:
+        flash('Invalid location', 'danger')
+        return redirect(url_for('report', loc=1))
+
+    # 2) Compute timezone and today in local tz
+    tz = ZoneInfo(TIMEZONES[loc.name])
+    today_local = datetime.now(tz)
+
+    # 3) Build a list of all Mondays in the last 90 days
+    #    First: find the most recent Monday (could be today if today is Monday)
+    days_since_monday = today_local.weekday()  # Monday=0, Sunday=6
+    this_monday = (today_local - timedelta(days=days_since_monday)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    ).date()
+
+    #    Then go back in 7-day steps until 90 days ago
+    three_months_ago = today_local.date() - timedelta(days=90)
+    mondays = []
+    m = this_monday
+    while m >= three_months_ago:
+        mondays.append(m)
+        m = m - timedelta(days=7)
+    #    Sort descending (most recent first)
+    mondays.sort(reverse=True)
+
+    # 4) Parse which week the user wants (week_start), default to this_monday
+    week_start_str = request.args.get('week_start')
     if week_start_str:
         try:
-            week_start = datetime.fromisoformat(week_start_str).replace(
-                tzinfo=tz, hour=0, minute=0, second=0, microsecond=0
-            )
-        except ValueError:
-            flash('Invalid week_start date format. Use YYYY-MM-DD.', 'warning')
-            return redirect(url_for('index', loc=loc_id))
+            week_start_date = datetime.fromisoformat(week_start_str).date()
+            if week_start_date not in mondays:
+                raise ValueError()
+        except (ValueError, TypeError):
+            flash('Invalid week selection. Showing current week.', 'warning')
+            week_start_date = this_monday
     else:
-        today = datetime.now(tz)
-        # roll back to the most recent Monday
-        days_since_monday = today.weekday()  # Monday = 0
-        week_start = (today - timedelta(days=days_since_monday)).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
+        week_start_date = this_monday
 
-    # Compute the end of Sunday (i.e. start of next Monday)
-    week_end = week_start + timedelta(days=7)
+    # 5) Compute week_start and week_end as aware datetimes
+    week_start_local = datetime.combine(week_start_date, datetime.min.time(), tzinfo=tz)
+    week_end_local = week_start_local + timedelta(days=7)  # next Monday at 00:00
 
-    # 2) Fetch all punches for this location between week_start and week_end
-    # Convert to UTC for querying the timestamps (since stored as UTC)
-    start_utc = week_start.astimezone(ZoneInfo('UTC'))
-    end_utc   = week_end.astimezone(ZoneInfo('UTC'))
+    # 6) Convert to UTC to query punches
+    week_start_utc = week_start_local.astimezone(ZoneInfo('UTC'))
+    week_end_utc   = week_end_local.astimezone(ZoneInfo('UTC'))
 
+    # 7) Fetch all punches for this location in the selected week
     punches = (
         Punch.query
-        .join(Employee)
-        .filter(
-            Employee.location_id==loc_id,
-            Punch.timestamp >= start_utc,
-            Punch.timestamp < end_utc
-        )
-        .order_by(Punch.employee_id, Punch.timestamp)
-        .all()
+             .join(Employee)
+             .filter(
+                 Employee.location_id == loc_id,
+                 Punch.timestamp >= week_start_utc,
+                 Punch.timestamp < week_end_utc
+             )
+             .order_by(Punch.employee_id, Punch.timestamp)
+             .all()
     )
 
-    # 3) Organize punches by employee → day (local date)
-    # Structure: { employee_id: { local_date: [ ('IN', dt), ('OUT', dt), … ] } }
+    # 8) Organize punches by employee_id → local date → list of (type, dt)
+    #    Structure: { emp_id: { date: [ ( 'IN', datetime ), ( 'OUT', datetime ), ... ] } }
     by_emp = defaultdict(lambda: defaultdict(list))
     for p in punches:
-        # convert UTC timestamp to local timezone
         local_dt = p.timestamp.replace(tzinfo=ZoneInfo('UTC')).astimezone(tz)
         local_date = local_dt.date()
         by_emp[p.employee_id][local_date].append((p.type, local_dt))
 
-    # 4) Build a list of employees at this location
+    # 9) Get all employees at this location (even if they had zero punches)
     employees = Employee.query.filter_by(location_id=loc_id).order_by(Employee.name).all()
 
-    # 5) For each employee, compute each day’s first IN, last OUT, and daily hours
+    # 10) Precompute the seven dates for Monday → Sunday of selected week
+    dates = [week_start_date + timedelta(days=i) for i in range(7)]
+
+    # 11) Build report_data: one dict per employee
     report_data = []
-    total_week_seconds = lambda emp_dict: sum(emp_dict['daily_seconds'].values())
-
-    # Helper to compute daily IN/OUT and seconds
-    def compute_day_summary(events):
-        """
-        events: list of (type, datetime) all on the same local_date, sorted by dt.
-        Returns: (first_in_dt, last_out_dt, seconds_worked)
-        If missing IN or OUT, seconds_worked = 0.
-        """
-        ins = [dt for (t, dt) in events if t == 'IN']
-        outs = [dt for (t, dt) in events if t == 'OUT']
-        if not ins or not outs:
-            return None, None, 0
-        first_in = min(ins)
-        last_out = max(outs)
-        # if last_out < first_in, treat as zero
-        seconds = max(0, (last_out - first_in).total_seconds())
-        return first_in, last_out, seconds
-
-    # Precompute all dates Monday→Sunday for this week
-    monday = week_start.date()
-    dates = [monday + timedelta(days=i) for i in range(7)]
-
     for emp in employees:
-        emp_dict = {
+        row = {
             'employee_name': emp.name,
-            'days': {},             # { date: { 'in': dt or None, 'out': dt or None, 'hrs': float } }
-            'daily_seconds': {},    # { date: seconds }
-            'week_start': week_start.date(),
+            'daily_events': {},   # { date: [ ( 'IN', dt ), ( 'OUT', dt ), ... ] }
         }
         for d in dates:
+            # Get the list of events for that employee on date d (possibly empty)
             events = by_emp[emp.id].get(d, [])
-            events.sort(key=lambda x: x[1])   # sort by datetime
-            first_in, last_out, secs = compute_day_summary(events)
-            emp_dict['days'][d] = {
-                'in':  first_in,
-                'out': last_out,
-                'hrs': round(secs/3600, 2)   # hours rounded to 2 decimals
-            }
-            emp_dict['daily_seconds'][d] = secs
+            # Sort events by timestamp
+            events.sort(key=lambda x: x[1])
+            row['daily_events'][d] = events
 
-        # Compute total hours for the week
-        week_secs = total_week_seconds(emp_dict)
-        emp_dict['week_total_hrs'] = round(week_secs/3600, 2)
+        report_data.append(row)
 
-        report_data.append(emp_dict)
-
-    # 6) Render the template, passing in report_data and dates[ ] for headers
+    # 12) Render the template, passing all needed context
     return render_template(
         'weekly_report.html',
-        loc=Location.query.get(loc_id),
-        report_data=report_data,
-        dates=dates
+        loc=loc,
+        mondays=mondays,
+        selected_monday=week_start_date,
+        dates=dates,
+        report_data=report_data
     )
 
 @app.route('/manage_employees', methods=['GET','POST'])
