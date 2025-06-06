@@ -1,38 +1,84 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <!-- Bootstrap -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5/dist/css/bootstrap.min.css" rel="stylesheet">
-  <!-- RiverCity custom overrides -->
-  <link href="{{ url_for('static', filename='css/custom.css') }}" rel="stylesheet">
-  <title>Manager Login</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+  />
+  <title>
+    {% if manager %}Manager Login{% else %}Employee Login{% endif %}
+  </title>
+  <style>
+    body {
+      background: #f8f9fa;
+      color: #212529;
+    }
+    .login-container {
+      max-width: 400px;
+      margin: 8vh auto;
+      padding: 2rem;
+      background: #ffffff;
+      border: 1px solid #dee2e6;
+      border-radius: 0.5rem;
+      box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    }
+  </style>
 </head>
-<body class="p-4">
-  <div class="container" style="max-width: 400px;">
-    <h1 class="mb-4 text-center">Manager Login</h1>
+<body>
+  <div class="login-container">
+    <h2 class="mb-4 text-center">
+      {% if manager %}Manager Login{% else %}Employee Login{% endif %}
+    </h2>
+
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
-        {% for category, message in messages %}
-          <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
-            {{ message }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        {% for category, msg in messages %}
+          <div class="alert alert-{{ category }} small">
+            {{ msg }}
           </div>
         {% endfor %}
       {% endif %}
     {% endwith %}
-    <form method="post">
+
+    <form
+      method="POST"
+      action="{% if manager %}{{ url_for('manager_login') }}{% else %}{{ url_for('login') }}{% endif %}"
+    >
       <div class="mb-3">
-        <label for="username" class="form-label text-secondary">Username</label>
-        <input id="username" name="username" class="form-control" placeholder="Username" required>
+        <label for="username" class="form-label">Username</label>
+        <input
+          type="text"
+          class="form-control"
+          id="username"
+          name="username"
+          autofocus
+          required
+        />
       </div>
       <div class="mb-3">
-        <label for="password" class="form-label text-secondary">Password</label>
-        <input id="password" name="password" type="password" class="form-control" placeholder="Password" required>
+        <label for="password" class="form-label">Password</label>
+        <input
+          type="password"
+          class="form-control"
+          id="password"
+          name="password"
+          required
+        />
       </div>
-      <button type="submit" class="btn btn-primary w-100">Login</button>
+      <button type="submit" class="btn btn-primary w-100">
+        {% if manager %}Log in as Manager{% else %}Log in as Employee{% endif %}
+      </button>
     </form>
+
+    <div class="mt-3 text-center">
+      {% if manager %}
+        <a href="{{ url_for('login') }}">Employee? Click here</a>
+      {% else %}
+        <a href="{{ url_for('manager_login') }}">Manager? Click here</a>
+      {% endif %}
+    </div>
   </div>
 </body>
 </html>

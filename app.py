@@ -239,14 +239,39 @@ def manage_employees():
 
 @app.route('/login', methods=['GET','POST'])
 def login():
+    """
+    EMPLOYEE login page. Only User.is_manager == False may log in here.
+    After successful login, redirect to the clock page (index).
+    """
     if request.method == 'POST':
         u = User.query.filter_by(username=request.form['username']).first()
-        if u and u.check_password(request.form['password']):
+        if u and u.check_password(request.form['password']) and not u.is_manager:
             login_user(u)
             return redirect(url_for('index'))
-        flash('Invalid credentials', 'danger')
+        flash('Invalid employee credentials', 'danger')
         return redirect(url_for('login'))
+
+    # Render the same login.html template (no manager flag)
     return render_template('login.html')
+
+
+@app.route('/manager_login', methods=['GET','POST'])
+def manager_login():
+    """
+    MANAGER login page. Only User.is_manager == True may log in here.
+    After successful login, redirect to the report page.
+    """
+    if request.method == 'POST':
+        u = User.query.filter_by(username=request.form['username']).first()
+        if u and u.check_password(request.form['password']) and u.is_manager:
+            login_user(u)
+            # Redirect manager to /report (default loc=1)
+            return redirect(url_for('report', loc=1))
+        flash('Invalid manager credentials', 'danger')
+        return redirect(url_for('manager_login'))
+
+    # Render login.html but pass a flag so the template knows it's for managers
+    return render_template('login.html', manager=True)
 
 @app.route('/logout')
 @login_required
