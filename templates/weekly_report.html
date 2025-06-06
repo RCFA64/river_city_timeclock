@@ -2,6 +2,7 @@
 {% block title %}Detailed Weekly Timecard: {{ loc.name }}{% endblock %}
 {% block header %}Detailed Weekly Timecard: {{ loc.name }}{% endblock %}
 {% block content %}
+  <!-- ─── Location & Week dropdowns ─────────────────────────────────────────── -->
   <div class="mb-4 d-flex align-items-center">
     <!-- Location selector -->
     <form method="get" class="me-4 d-flex align-items-center">
@@ -41,8 +42,9 @@
       </select>
     </form>
   </div>
+  <!-- ──────────────────────────────────────────────────────────────────────────── -->
 
-  <!-- Detailed table -->
+  <!-- ─── Detailed Weekly Table ──────────────────────────────────────────────── -->
   <table class="table table-dark table-striped table-hover">
     <thead class="table-dark">
       <tr>
@@ -53,14 +55,19 @@
             {{ d.strftime('%m/%d') }}
           </th>
         {% endfor %}
+        <!-- New “Total” column header -->
+        <th class="text-center" style="color: #fff;">Total&nbsp;(hrs)</th>
       </tr>
     </thead>
     <tbody>
       {% for emp in report_data %}
         <tr>
+          <!-- Employee Name (white) -->
           <td class="align-middle" style="color: #fff;">
             {{ emp.employee_name }}
           </td>
+
+          <!-- One column per day -->
           {% for d in dates %}
             <td style="color: #fff;">
               {% set events = emp.daily_events[d] %}
@@ -84,10 +91,16 @@
               {% endif %}
             </td>
           {% endfor %}
+
+          <!-- New “Total Hours” column -->
+          <td class="align-middle text-center" style="color: #fff;">
+            {{ "%0.2f"|format(emp.week_total_hrs) }}h
+          </td>
         </tr>
       {% endfor %}
     </tbody>
   </table>
+  <!-- ──────────────────────────────────────────────────────────────────────────── -->
 
   <div class="mt-4">
     <a href="{{ url_for('report', loc=loc.id) }}" class="btn btn-outline-light">

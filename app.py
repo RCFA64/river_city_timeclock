@@ -221,22 +221,27 @@ from flask import request, flash
 from collections import defaultdict
 import math
 
+from flask import request, flash, redirect, url_for
+from collections import defaultdict
+import math
+
 @app.route('/weekly_report')
 @login_required
 def weekly_report():
     """
     Detailed weekly report showing every IN/OUT (rounded to 15min) for each employee,
     with a dropdown to select any week (Monday) in the past 3 months, and a location selector.
+    Now also rounds the weekly total hours to the nearest 15 minutes using the 7/8 rule.
     Query params:
       - loc:        integer Location.id
-      - week_start: ISO date string (YYYY-MM-DD) for the Monday to display
-                    If missing, defaults to this week’s Monday.
+      - week_start: ISO date string (YYYY-MM-DD) for the Monday to display.
+                    If missing or invalid, defaults to this week’s Monday.
     """
 
-    # 1) Get all locations so we can populate the dropdown
+    # 1) Get all locations for the dropdown
     locations = Location.query.order_by(Location.name).all()
 
-    # 2) Determine which location the user selected (default = first location)
+    # 2) Determine which location was selected (default = first)
     try:
         loc_id = int(request.args.get('loc', locations[0].id))
     except (ValueError, IndexError):
@@ -248,11 +253,11 @@ def weekly_report():
         flash('Invalid location', 'danger')
         return redirect(url_for('weekly_report', loc=locations[0].id))
 
-    # 3) Compute timezone and “today” in that tz
+    # 3) Compute local timezone and “today” in that tz
     tz = ZoneInfo(TIMEZONES[loc.name])
     today_local = datetime.now(tz)
 
-    # 4) Build a list of all Mondays in the last 90 days
+    # 4) Build list of all Mondays in the past 90 days
     days_since_monday = today_local.weekday()  # Monday=0
     this_monday = (today_local - timedelta(days=days_since_monday)).replace(
         hour=0, minute=0, second=0, microsecond=0
@@ -266,7 +271,7 @@ def weekly_report():
         m -= timedelta(days=7)
     mondays.sort(reverse=True)  # most recent first
 
-    # 5) Parse which week the user requested
+    # 5) Parse week_start from query (or default to this_monday)
     week_start_str = request.args.get('week_start')
     if week_start_str:
         try:
@@ -280,13 +285,13 @@ def weekly_report():
     else:
         week_start_date = this_monday
 
-    # 6) Convert that Monday (local) → aware datetime → UTC for querying
+    # 6) Convert week_start_date → local datetime → UTC for querying
     week_start_local = datetime.combine(week_start_date, datetime.min.time(), tzinfo=tz)
     week_end_local   = week_start_local + timedelta(days=7)
     week_start_utc   = week_start_local.astimezone(ZoneInfo('UTC'))
     week_end_utc     = week_end_local.astimezone(ZoneInfo('UTC'))
 
-    # 7) Query all punches for this location in that UTC window
+    # 7) Fetch punches for this location in that UTC window
     punches = (
         Punch.query
              .join(Employee)
@@ -299,52 +304,84 @@ def weekly_report():
              .all()
     )
 
-    # 8) Helper to round a datetime to nearest 15 minutes
+    # 8) Helper: round a datetime to nearest 15 minutes (7/8 rule)
     def round_to_15(dt_local):
-        # dt_local is timezone-aware
         minute = dt_local.minute
         remainder = minute % 15
         if remainder < 8:
             new_minute = minute - remainder
         else:
             new_minute = minute + (15 - remainder)
-        # handle roll‐over if new_minute == 60
         if new_minute == 60:
-            dt_local = dt_local.replace(hour=(dt_local.hour + 1) % 24, minute=0, second=0, microsecond=0)
+            dt_local = dt_local.replace(
+                hour=(dt_local.hour + 1) % 24,
+                minute=0, second=0, microsecond=0
+            )
         else:
-            dt_local = dt_local.replace(minute=new_minute, second=0, microsecond=0)
+            dt_local = dt_local.replace(
+                minute=new_minute, second=0, microsecond=0
+            )
         return dt_local
 
     # 9) Organize punches by employee → local date → list of (type, rounded dt)
     by_emp = defaultdict(lambda: defaultdict(list))
     for p in punches:
-        # convert UTC timestamp to local timezone
+        # convert UTC→local, then round
         local_dt = p.timestamp.replace(tzinfo=ZoneInfo('UTC')).astimezone(tz)
         rounded_dt = round_to_15(local_dt)
         local_date = rounded_dt.date()
         by_emp[p.employee_id][local_date].append((p.type, rounded_dt))
 
-    # 10) Fetch every employee at this location (so we show someone even if no punches)
+    # 10) Fetch all employees at this location
     employees = Employee.query.filter_by(location_id=loc_id).order_by(Employee.name).all()
 
-    # 11) Precompute the seven dates (Mon → Sun) of the selected week
+    # 11) Precompute the seven Monday→Sunday dates
     dates = [week_start_date + timedelta(days=i) for i in range(7)]
 
-    # 12) Build the final data structure for the template
+    # 12) Helper: round total seconds to nearest 900 seconds (15 minutes)
+    def round_secs_to_15(total_secs):
+        remainder = total_secs % 900  # 900 = 15 * 60
+        if remainder < 450:
+            return total_secs - remainder
+        else:
+            return total_secs + (900 - remainder)
+
+    # 13) Build report_data, including a `week_total_hrs` rounded to nearest 15 min
     report_data = []
     for emp in employees:
         row = {
             'employee_name': emp.name,
-            'daily_events': {}
+            'daily_events': {},      # { date: [ ('IN', dt), ('OUT', dt), … ] }
+            'week_total_hrs': 0.0    # will fill below
         }
+        week_seconds = 0
+
         for d in dates:
-            # get all events for emp on day d (sorted by time)
             events = by_emp[emp.id].get(d, [])
-            events.sort(key=lambda x: x[1])
+            events.sort(key=lambda x: x[1])  # chronological
             row['daily_events'][d] = events
+
+            # Sum that day’s worked seconds by pairing IN→OUT
+            daily_seconds = 0
+            last_in = None
+            for ev_type, ev_dt in events:
+                if ev_type == 'IN':
+                    last_in = ev_dt
+                elif ev_type == 'OUT' and last_in:
+                    delta = (ev_dt - last_in).total_seconds()
+                    if delta > 0:
+                        daily_seconds += delta
+                    last_in = None
+            week_seconds += daily_seconds
+
+        # Now round the total week_seconds to nearest 15 minutes
+        rounded_week_secs = round_secs_to_15(week_seconds)
+        # Convert to hours with two decimals
+        row['week_total_hrs'] = round(rounded_week_secs / 3600, 2)
+
         report_data.append(row)
 
-    # 13) Render the template, passing everything it needs
+    # 14) Render the template with all context
     return render_template(
         'weekly_report.html',
         locations=locations,
