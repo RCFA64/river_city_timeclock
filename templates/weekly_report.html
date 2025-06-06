@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+  />
+  <title>Weekly Time Card: {{ loc.name }} (Week of {{ dates[0].strftime('%b %-d, %Y') }})</title>
+  <style>
+    body {
+      background: #f8f9fa;
+      color: #212529;
+    }
+    table {
+      font-size: 0.9rem;
+    }
+    th, td {
+      vertical-align: middle !important;
+      text-align: center;
+    }
+    .time-cell {
+      min-width: 75px;
+    }
+  </style>
+</head>
+<body class="p-4">
+  <div class="container-fluid">
+    <h2 class="mb-4">
+      Weekly Time Card for <strong>{{ loc.name }}</strong><br />
+      Week of {{ dates[0].strftime('%B %-d, %Y') }}
+    </h2>
+
+    <!-- Navigation back to main reports or selecting another week -->
+    <div class="mb-3">
+      <a href="{{ url_for('report', loc=loc.id) }}" class="btn btn-outline-secondary me-2">
+        ← Monthly/Weekly Summary
+      </a>
+      <!-- You could add a small form here to pick a different week_start -->
+    </div>
+
+    <table class="table table-bordered table-striped">
+      <thead class="table-light">
+        <tr>
+          <th>Employee</th>
+          {% for d in dates %}
+            <th>{{ d.strftime('%a<br />%m/%d')|safe }}</th>
+          {% endfor %}
+          <th>Total&nbsp;(hrs)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for emp in report_data %}
+          <tr>
+            <td class="fw-semibold">{{ emp.employee_name }}</td>
+
+            {% for d in dates %}
+              {% set day = emp.days[d] %}
+              <td class="time-cell">
+                {% if day.in and day.out %}
+                  <!-- Show times as HH:MM → HH:MM -->
+                  {{ day.in.strftime('%-I:%M %p') }}<br />
+                  {{ day.out.strftime('%-I:%M %p') }}<br />
+                  <small class="text-muted">({{ '%0.2f'|format(day.hrs) }}h)</small>
+                {% else %}
+                  &mdash;
+                {% endif %}
+              </td>
+            {% endfor %}
+
+            <td class="fw-semibold">
+              {{ '%0.2f'|format(emp.week_total_hrs) }}h
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>
