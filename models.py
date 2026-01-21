@@ -19,12 +19,21 @@ class Employee(db.Model):
     name        = db.Column(db.String(100), nullable=False)
     location_id = db.Column(db.Integer, db.ForeignKey('locations.id'), nullable=False)
     location    = db.relationship('Location', back_populates='employees')
-    punches     = db.relationship('Punch', back_populates='employee')
+    punches     = db.relationship(
+        'Punch',
+        back_populates='employee',
+        cascade='all, delete-orphan',
+        passive_deletes=True,
+    )
 
 class Punch(db.Model):
     __tablename__ = 'punches'
     id          = db.Column(db.Integer, primary_key=True)
-    employee_id = db.Column(db.Integer, db.ForeignKey('employees.id'), nullable=False)
+    employee_id = db.Column(
+        db.Integer,
+        db.ForeignKey('employees.id', ondelete='CASCADE'),
+        nullable=False,
+    )
     timestamp   = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     type        = db.Column(db.Enum('IN', 'OUT', name='punch_type'), nullable=False)
     employee    = db.relationship('Employee', back_populates='punches')

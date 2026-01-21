@@ -114,15 +114,17 @@ def index():
         })
 
     # employee list (for dropdown)
-    emps = Employee.query.filter_by(location_id=sel).all()
+    emps = Employee.query.filter_by(location_id=sel, active=True).all()
 
-    return render_template('index.html',
-                           locations=locs,
-                           sel=sel,
-                           emps=emps,
-                           feed=feed,
-                           current_date=current_date,
-                           emp=emp)
+    return render_template(
+        'index.html',
+        locations=locs,
+        sel=sel,
+        emps=emps,
+        feed=feed,
+        current_date=current_date,
+        emp=emp  # <-- keep this as the selected employee_id (int) from querystring
+    )
 
 @app.route('/punch', methods=['POST'])
 def punch():
@@ -134,7 +136,11 @@ def punch():
 
     eid = int(emp_val)
 
-    # Always non-empty now!
+    emp = Employee.query.get(eid)
+    if not emp or not emp.active:
+        flash('This employee is inactive and cannot punch.', 'danger')
+        return redirect(url_for('index', loc=loc_id))
+
     punch_type = request.form.get('type', 'IN')
     p = Punch(employee_id=eid, type=punch_type, timestamp=datetime.utcnow())
     db.session.add(p)
@@ -404,17 +410,31 @@ def manage_employees():
             name = request.form['name']
             lid  = int(request.form['loc'])
             db.session.add(Employee(name=name, location_id=lid))
+            flash(f'Employee "{name}" added.', 'success')
         elif 'remove' in request.form:
             eid = int(request.form['eid'])
             emp = Employee.query.get(eid)
-            db.session.delete(emp)
+            if emp:
+                emp.active = False
+                flash(f'Employee "{emp.name}" deactivated.', 'success')
+            else:
+                flash('Employee not found.', 'warning')
+        elif 'remove' in request.form:
+            eid = int(request.form['eid'])
+            emp = Employee.query.get(eid)
+            if emp:
+                emp.active = False
+                flash(f'Employee "{emp.name}" deactivated.', 'success')
+            else:
+                flash('Employee not found.', 'warning')
+        
         db.session.commit()
         return redirect(url_for('manage_employees'))
 
     return render_template(
         'manage_employees.html',
         locations=Location.query.all(),
-        emps=Employee.query.all()
+        emps=Employee.query.order_by(Employee.active.desc(), Employee.name.asc()).all()
     )
 
 @app.route('/login', methods=['GET','POST'])

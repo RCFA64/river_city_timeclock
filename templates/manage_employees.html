@@ -53,13 +53,25 @@
   </form>
 
   <!-- Existing Employees List -->
+  <!-- Existing Employees List -->
   <ul class="list-group">
     {% for e in emps %}
       <li class="list-group-item d-flex justify-content-between align-items-center">
-        {{ e.name }} ({{ e.location.name }})
+        <div>
+          {{ e.name }} ({{ e.location.name }})
+          {% if not e.active %}
+            <span class="badge bg-secondary ms-2">Inactive</span>
+          {% endif %}
+        </div>
+  
         <form method="post" class="m-0">
           <input type="hidden" name="eid" value="{{ e.id }}">
-          <button name="remove" class="btn btn-sm btn-danger">Remove</button>
+  
+          {% if e.active %}
+            <button name="remove" class="btn btn-sm btn-danger">Deactivate</button>
+          {% else %}
+            <button name="reactivate" class="btn btn-sm btn-success">Reactivate</button>
+          {% endif %}
         </form>
       </li>
     {% endfor %}
