@@ -59,7 +59,9 @@
       <li class="list-group-item d-flex justify-content-between align-items-center">
         <div>
           {{ e.name }} ({{ e.location.name }})
-          {% if not e.active %}
+          {% set is_active = (e.active if e.active is defined else true) %}
+          
+          {% if not is_active %}
             <span class="badge bg-secondary ms-2">Inactive</span>
           {% endif %}
         </div>
@@ -67,7 +69,7 @@
         <form method="post" class="m-0">
           <input type="hidden" name="eid" value="{{ e.id }}">
   
-          {% if e.active %}
+          {% if is_active %}
             <button name="remove" class="btn btn-sm btn-danger">Deactivate</button>
           {% else %}
             <button name="reactivate" class="btn btn-sm btn-success">Reactivate</button>
