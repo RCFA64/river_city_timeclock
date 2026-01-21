@@ -140,7 +140,12 @@ def punch():
     eid = int(emp_val)
 
     emp = Employee.query.get(eid)
-    if not emp or not emp.active:
+    if not emp:
+        flash('Employee not found.', 'danger')
+        return redirect(url_for('index', loc=loc_id))
+    
+    # Safe check even if old model is running
+    if getattr(emp, "active", True) is False:
         flash('This employee is inactive and cannot punch.', 'danger')
         return redirect(url_for('index', loc=loc_id))
 
