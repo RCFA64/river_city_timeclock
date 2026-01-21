@@ -114,7 +114,10 @@ def index():
         })
 
     # employee list (for dropdown)
-    emps = Employee.query.filter_by(location_id=sel, active=True).all()
+    q = Employee.query.filter_by(location_id=sel)
+    if hasattr(Employee, "active"):
+        q = q.filter(Employee.active.is_(True))
+    emps = q.order_by(Employee.name.asc()).all()
 
     return render_template(
         'index.html',
