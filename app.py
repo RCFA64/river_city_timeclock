@@ -407,10 +407,11 @@ def manage_employees():
 
     if request.method == 'POST':
         if 'add' in request.form:
-            name = request.form['name']
+            name = request.form['name'].strip()
             lid  = int(request.form['loc'])
             db.session.add(Employee(name=name, location_id=lid))
             flash(f'Employee "{name}" added.', 'success')
+
         elif 'remove' in request.form:
             eid = int(request.form['eid'])
             emp = Employee.query.get(eid)
@@ -419,22 +420,30 @@ def manage_employees():
                 flash(f'Employee "{emp.name}" deactivated.', 'success')
             else:
                 flash('Employee not found.', 'warning')
-        elif 'remove' in request.form:
+
+        elif 'reactivate' in request.form:
             eid = int(request.form['eid'])
             emp = Employee.query.get(eid)
             if emp:
-                emp.active = False
-                flash(f'Employee "{emp.name}" deactivated.', 'success')
+                emp.active = True
+                flash(f'Employee "{emp.name}" reactivated.', 'success')
             else:
                 flash('Employee not found.', 'warning')
-        
+
         db.session.commit()
         return redirect(url_for('manage_employees'))
+
+    # GET: safe ordering even if active isn't present yet
+    active_col = getattr(Employee, "active", None)
+    if active_col is not None:
+        emps = Employee.query.order_by(active_col.desc(), Employee.name.asc()).all()
+    else:
+        emps = Employee.query.order_by(Employee.name.asc()).all()
 
     return render_template(
         'manage_employees.html',
         locations=Location.query.all(),
-        emps=Employee.query.order_by(Employee.active.desc(), Employee.name.asc()).all()
+        emps=emps
     )
 
 @app.route('/login', methods=['GET','POST'])
