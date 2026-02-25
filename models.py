@@ -69,4 +69,4 @@ class User(UserMixin, db.Model):
         self.password_hash = generate_password_hash(pwd)
 
     def check_password(self, pwd):
-        return check_password_hash(pwd)
+        return check_password_hash(self.password_hash, pwd)

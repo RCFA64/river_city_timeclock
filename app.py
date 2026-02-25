@@ -24,13 +24,15 @@ TIMEZONES = {
     'Indianapolis': 'America/New_York'
 }
 
+KIOSK_KEY = os.environ.get("KIOSK_KEY", "")
+
 app = Flask(__name__)
 
 load_dotenv()
 
 app.config.update(
-    SECRET_KEY=os.environ['SECRET_KEY'],
-    SQLALCHEMY_DATABASE_URI=os.environ['DATABASE_URL'],
+    SECRET_KEY=os.environ.get('SECRET_KEY', 'dev-secret-change-me'),
+    SQLALCHEMY_DATABASE_URI=os.environ.get('DATABASE_URL'),
     SQLALCHEMY_TRACK_MODIFICATIONS=False,
 )
 
@@ -213,6 +215,10 @@ def punch():
 # ----------------------------
 @app.route('/kiosk')
 def kiosk():
+
+    if KIOSK_KEY and request.args.get("key") != KIOSK_KEY:
+    return "Unauthorized", 401
+
     locs = Location.query.order_by(Location.name).all()
     if not locs:
         flash("No locations configured.", "danger")
