@@ -3,39 +3,65 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <!-- Bootstrap dark theme -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5/dist/css/bootstrap.min.css" rel="stylesheet">
-  <!-- Custom CSS -->
   <link href="{{ url_for('static', filename='css/custom.css') }}" rel="stylesheet">
-  <title>{% block title %}Time Clock{% endblock %}</title>
+  <title>{% block title %}River City Time Clock{% endblock %}</title>
   <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
   <link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
   <link rel="apple-touch-icon-precomposed" href="/static/apple-touch-icon-precomposed.png">
 </head>
-<body class="bg-dark text-white p-4">
-  <!-- Flash messages -->
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-      {% for cat, msg in messages %}
-        <div class="alert alert-{{ cat }}">{{ msg }}</div>
-      {% endfor %}
-    {% endif %}
-  {% endwith %}
 
-  <!-- Header -->
-  <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 class="mb-0">{% block header %}Time Clock{% endblock %}</h1>
-    {% if current_user.is_authenticated %}
-      <a href="{{ url_for('logout') }}" class="btn btn-sm btn-warning">Logout</a>
-    {% else %}
-      <a href="{{ url_for('login') }}" class="btn btn-sm btn-primary">Manager Login</a>
-    {% endif %}
-  </div>
+<body class="bg-dark text-white {% if kiosk_mode %}kiosk-body{% endif %}">
 
-  <!-- Main content -->
-  {% block content %}{% endblock %}
+  {# ✅ Hide navbar in kiosk mode #}
+  {% if not kiosk_mode %}
+  <nav class="navbar navbar-expand-lg navbar-dark border-bottom rcfa-navbar">
+    <div class="container-fluid">
+      <a class="navbar-brand fw-bold d-flex align-items-center gap-2" href="{{ url_for('index') }}">
+        <span class="brand-dot"></span>
+        <span>RCFA Time Clock</span>
+      </a>
 
-  <!-- Scripts -->
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#rcfaNav"
+              aria-controls="rcfaNav" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+
+      <div class="collapse navbar-collapse" id="rcfaNav">
+        <div class="ms-auto d-flex flex-wrap gap-2 align-items-center">
+
+          {% if current_user.is_authenticated and current_user.is_manager %}
+            <a class="btn btn-outline-light btn-sm" href="{{ url_for('weekly_report', loc=1) }}">Weekly Report</a>
+            <a class="btn btn-outline-light btn-sm" href="{{ url_for('manage_employees') }}">Employees</a>
+            <a class="btn btn-outline-light btn-sm" href="{{ url_for('admin_punches') }}">Punches</a>
+            <a class="btn btn-outline-light btn-sm" href="{{ url_for('admin_audit') }}">Audit Log</a>
+            <a class="btn btn-warning btn-sm" href="{{ url_for('logout') }}">Logout</a>
+          {% elif current_user.is_authenticated %}
+            <a class="btn btn-outline-light btn-sm" href="{{ url_for('logout') }}">Logout</a>
+          {% else %}
+            <a class="btn btn-outline-light btn-sm" href="{{ url_for('login') }}">Employee Login</a>
+            <a class="btn btn-outline-light btn-sm" href="{{ url_for('manager_login') }}">Manager Login</a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </nav>
+  {% endif %}
+
+  <main class="{% if kiosk_mode %}container-fluid p-0{% else %}container py-4{% endif %}">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="{% if kiosk_mode %}kiosk-flash-wrap{% else %}mb-3{% endif %}">
+          {% for cat, msg in messages %}
+            <div class="alert alert-{{ cat }} mb-2">{{ msg }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5/dist/js/bootstrap.bundle.min.js"></script>
   {% block scripts %}{% endblock %}
 </body>

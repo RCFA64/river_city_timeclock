@@ -1,5 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, current_app
-from flask_sqlalchemy import SQLAlchemy
+from flask import Flask, render_template, request, redirect, url_for, flash, current_app, jsonify, Response
 from flask_login import (
     LoginManager, login_user, logout_user,
     login_required, current_user
@@ -7,12 +6,16 @@ from flask_login import (
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from apscheduler.schedulers.background import BackgroundScheduler
-from models import db, Location, Employee, Punch, User
+from models import db, Location, Employee, Punch, User, PunchAudit
 from utils import compute_shifts
 import math
 import os
 from dotenv import load_dotenv
 from collections import defaultdict
+from sqlalchemy import inspect, text
+from functools import wraps
+import io
+import csv
 
 TIMEZONES = {
     'Sacramento':   'America/Los_Angeles',
@@ -42,27 +45,73 @@ login_manager.init_app(app)
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# Bootstrap schema and seed locations
+# ----------------------------
+# ✅ Guards + lightweight schema safety (no Alembic in this repo)
+# ----------------------------
+def manager_required(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not current_user.is_authenticated or not getattr(current_user, "is_manager", False):
+            flash("Manager access required.", "warning")
+            return redirect(url_for("manager_login"))
+        return fn(*args, **kwargs)
+    return wrapper
+
+
+def ensure_schema():
+    """
+    Lightweight schema helper.
+    - Adds Employee.active / Employee.terminated_at columns if missing
+    - Ensures PunchAudit table exists
+    """
+    insp = inspect(db.engine)
+
+    if "employees" in insp.get_table_names():
+        cols = {c["name"] for c in insp.get_columns("employees")}
+
+        if "active" not in cols:
+            try:
+                db.session.execute(text("ALTER TABLE employees ADD COLUMN active BOOLEAN NOT NULL DEFAULT TRUE"))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+
+        cols = {c["name"] for c in insp.get_columns("employees")}
+        if "terminated_at" not in cols:
+            try:
+                db.session.execute(text("ALTER TABLE employees ADD COLUMN terminated_at TIMESTAMP NULL"))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+
+        try:
+            db.session.execute(text("UPDATE employees SET active = TRUE WHERE active IS NULL"))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+    # Create any new tables (e.g., punch_audits)
+    try:
+        db.create_all()
+    except Exception:
+        pass
+
+
 with app.app_context():
     db.create_all()
+    ensure_schema()
 
     coords = [
-        # Sacramento (your shop)
         ('Sacramento',   38.535168, -121.3661184),
-        # Dallas (your shop)
         ('Dallas',       32.5372008,  -96.7493993),
-        # Houston (your shop)
         ('Houston',      29.835264,  -95.5383808),
-        # Indianapolis (your shop)
         ('Indianapolis', 39.6836058,  -86.1927711),
     ]
     for name, lat, lng in coords:
         loc = Location.query.filter_by(name=name).first()
         if loc:
-            # update existing
             loc.lat, loc.lng = lat, lng
         else:
-            # create new
             db.session.add(Location(name=name, lat=lat, lng=lng))
 
     db.session.commit()
@@ -114,9 +163,7 @@ def index():
         })
 
     # employee list (for dropdown)
-    q = Employee.query.filter_by(location_id=sel)
-    if hasattr(Employee, "active"):
-        q = q.filter(Employee.active.is_(True))
+    q = Employee.query.filter_by(location_id=sel).filter(Employee.active.is_(True))
     emps = q.order_by(Employee.name.asc()).all()
 
     return render_template(
@@ -154,93 +201,348 @@ def punch():
     db.session.add(p)
     db.session.commit()
 
+    # Kiosk mode redirect (auto-reset)
+    if request.form.get('kiosk') == '1':
+        flash(f"{emp.name} clocked {punch_type}.", "success")
+        return redirect(url_for('kiosk', loc=loc_id))
+    
     return redirect(url_for('index', loc=loc_id, emp=eid))
 
-@app.route('/report')
-@login_required
-def report():
-    loc = int(request.args.get('loc', 1))
-    tz  = ZoneInfo(TIMEZONES[Location.query.get(loc).name])
+# ----------------------------
+# ✅ KIOSK MODE (no login)
+# ----------------------------
+@app.route('/kiosk')
+def kiosk():
+    locs = Location.query.order_by(Location.name).all()
+    if not locs:
+        flash("No locations configured.", "danger")
+        return redirect(url_for("index"))
 
-    # Grab everything in the last two months (or however far back you want)
-    cutoff = datetime.utcnow() - timedelta(days=60)
-    punches = (Punch.query.join(Employee)
-               .filter(Employee.location_id==loc,
-                       Punch.timestamp>=cutoff)
-               .order_by(Punch.timestamp)
-               .all())
+    try:
+        sel = int(request.args.get('loc', locs[0].id))
+    except Exception:
+        sel = locs[0].id
 
-    # First, bucket by week
-    from collections import defaultdict, OrderedDict
-    weekly = defaultdict(list)
+    location = Location.query.get(sel)
+    if not location:
+        sel = locs[0].id
+        location = Location.query.get(sel)
+
+    # Active employees only
+    emps = (Employee.query
+            .filter(Employee.location_id == sel, Employee.active.is_(True))
+            .order_by(Employee.name.asc())
+            .all())
+
+    tz = ZoneInfo(TIMEZONES[location.name])
+    current_date = datetime.now(tz).strftime('%A, %B %d, %Y')
+
+    return render_template(
+        'kiosk.html',
+        locations=locs,
+        sel=sel,
+        emps=emps,
+        current_date=current_date,
+        kiosk_mode=True
+    )
+
+# ----------------------------
+# ✅ ADMIN: Punch edit + audit log
+# ----------------------------
+@app.route('/admin/punches')
+@manager_required
+def admin_punches():
+    locations = Location.query.order_by(Location.name).all()
+    if not locations:
+        flash("No locations configured.", "danger")
+        return redirect(url_for("index"))
+
+    try:
+        loc_id = int(request.args.get('loc', locations[0].id))
+    except Exception:
+        loc_id = locations[0].id
+
+    loc = Location.query.get(loc_id)
+    if not loc:
+        loc = locations[0]
+        loc_id = loc.id
+
+    tz = ZoneInfo(TIMEZONES[loc.name])
+    today_local = datetime.now(tz)
+    days_since_monday = today_local.weekday()
+    this_monday = (today_local - timedelta(days=days_since_monday)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    ).date()
+
+    three_months_ago = today_local.date() - timedelta(days=90)
+    mondays = []
+    m = this_monday
+    while m >= three_months_ago:
+        mondays.append(m)
+        m -= timedelta(days=7)
+    mondays.sort(reverse=True)
+
+    week_start_str = request.args.get('week_start')
+    if week_start_str:
+        try:
+            candidate = datetime.fromisoformat(week_start_str).date()
+            week_start_date = candidate if candidate in mondays else this_monday
+        except Exception:
+            week_start_date = this_monday
+    else:
+        week_start_date = this_monday
+
+    week_start_local = datetime.combine(week_start_date, datetime.min.time(), tzinfo=tz)
+    week_end_local   = week_start_local + timedelta(days=7)
+    week_start_utc   = week_start_local.astimezone(ZoneInfo('UTC'))
+    week_end_utc     = week_end_local.astimezone(ZoneInfo('UTC'))
+
+    punches = (
+        Punch.query
+             .join(Employee)
+             .filter(Employee.location_id == loc_id,
+                     Punch.timestamp >= week_start_utc,
+                     Punch.timestamp <  week_end_utc)
+             .order_by(Punch.timestamp.desc())
+             .all()
+    )
+
+    rows = []
+    for p in punches:
+        local_ts = p.timestamp.replace(tzinfo=ZoneInfo('UTC')).astimezone(tz)
+        rows.append({
+            "id": p.id,
+            "employee": p.employee.name,
+            "employee_id": p.employee_id,
+            "type": p.type,
+            "local_str": local_ts.strftime("%Y-%m-%d %I:%M %p"),
+        })
+
+    return render_template(
+        "admin_punches.html",
+        locations=locations,
+        loc=loc,
+        mondays=mondays,
+        selected_monday=week_start_date,
+        rows=rows
+    )
+
+
+@app.route('/admin/punch/<int:punch_id>/edit', methods=['GET','POST'])
+@manager_required
+def admin_edit_punch(punch_id: int):
+    p = Punch.query.get_or_404(punch_id)
+
+    if request.method == 'POST':
+        new_type = (request.form.get("type") or "").strip().upper()
+        new_ts_str = (request.form.get("timestamp") or "").strip()
+        note = (request.form.get("note") or "").strip()[:500]
+
+        if new_type not in ("IN", "OUT"):
+            flash("Invalid type.", "warning")
+            return redirect(url_for("admin_edit_punch", punch_id=punch_id))
+
+        try:
+            new_local = datetime.fromisoformat(new_ts_str)
+        except Exception:
+            flash("Invalid timestamp.", "warning")
+            return redirect(url_for("admin_edit_punch", punch_id=punch_id))
+
+        emp_loc = Location.query.get(p.employee.location_id)
+        tz = ZoneInfo(TIMEZONES[emp_loc.name])
+        new_local = new_local.replace(tzinfo=tz)
+        new_utc = new_local.astimezone(ZoneInfo('UTC')).replace(tzinfo=None)
+
+        db.session.add(PunchAudit(
+            punch_id=p.id,
+            employee_id=p.employee_id,
+            changed_by_user_id=getattr(current_user, "id", None),
+            action="EDIT",
+            old_type=p.type,
+            new_type=new_type,
+            old_timestamp=p.timestamp,
+            new_timestamp=new_utc,
+            note=note or None,
+        ))
+
+        p.type = new_type
+        p.timestamp = new_utc
+        db.session.commit()
+
+        flash("Punch updated (audit logged).", "success")
+        return redirect(url_for("admin_punches", loc=p.employee.location_id))
+
+    emp_loc = Location.query.get(p.employee.location_id)
+    tz = ZoneInfo(TIMEZONES[emp_loc.name])
+    local_ts = p.timestamp.replace(tzinfo=ZoneInfo('UTC')).astimezone(tz)
+    local_value = local_ts.strftime("%Y-%m-%dT%H:%M")
+
+    return render_template(
+        "admin_edit_punch.html",
+        punch=p,
+        employee=p.employee,
+        location=emp_loc,
+        local_value=local_value
+    )
+
+
+@app.route('/admin/audit')
+@manager_required
+def admin_audit():
+    q = (PunchAudit.query
+         .order_by(PunchAudit.created_at.desc())
+         .limit(250)
+         .all())
+
+    rows = []
+    for a in q:
+        emp = Employee.query.get(a.employee_id) if a.employee_id else None
+        user = User.query.get(a.changed_by_user_id) if a.changed_by_user_id else None
+        rows.append({
+            "id": a.id,
+            "created_at": a.created_at,
+            "action": a.action,
+            "employee": emp.name if emp else "—",
+            "changed_by": user.username if user else "—",
+            "old_type": a.old_type,
+            "new_type": a.new_type,
+            "note": a.note or ""
+        })
+
+    return render_template("admin_audit.html", rows=rows)
+
+@app.route('/admin/payroll_export.csv')
+@manager_required
+def payroll_export_csv():
+    locations = Location.query.order_by(Location.name).all()
+    if not locations:
+        return Response("No locations configured", mimetype="text/plain", status=400)
+
+    try:
+        loc_id = int(request.args.get('loc', locations[0].id))
+    except Exception:
+        loc_id = locations[0].id
+
+    loc = Location.query.get(loc_id)
+    if not loc:
+        loc = locations[0]
+        loc_id = loc.id
+
+    tz = ZoneInfo(TIMEZONES[loc.name])
+    today_local = datetime.now(tz)
+    days_since_monday = today_local.weekday()
+    this_monday = (today_local - timedelta(days=days_since_monday)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    ).date()
+
+    week_start_str = request.args.get('week_start')
+    if week_start_str:
+        try:
+            week_start_date = datetime.fromisoformat(week_start_str).date()
+        except Exception:
+            week_start_date = this_monday
+    else:
+        week_start_date = this_monday
+
+    week_start_local = datetime.combine(week_start_date, datetime.min.time(), tzinfo=tz)
+    week_end_local   = week_start_local + timedelta(days=7)
+    week_start_utc   = week_start_local.astimezone(ZoneInfo('UTC'))
+    week_end_utc     = week_end_local.astimezone(ZoneInfo('UTC'))
+
+    punches = (
+        Punch.query
+             .join(Employee)
+             .filter(Employee.location_id == loc_id,
+                     Punch.timestamp >= week_start_utc,
+                     Punch.timestamp <  week_end_utc)
+             .order_by(Punch.employee_id, Punch.timestamp)
+             .all()
+    )
+
+    def round_to_15(dt_local):
+        minute = dt_local.minute
+        remainder = minute % 15
+        if remainder < 8:
+            new_minute = minute - remainder
+        else:
+            new_minute = minute + (15 - remainder)
+        if new_minute == 60:
+            dt_local = dt_local.replace(hour=(dt_local.hour + 1) % 24, minute=0, second=0, microsecond=0)
+        else:
+            dt_local = dt_local.replace(minute=new_minute, second=0, microsecond=0)
+        return dt_local
+
+    by_emp = defaultdict(list)
     for p in punches:
         local_dt = p.timestamp.replace(tzinfo=ZoneInfo('UTC')).astimezone(tz)
-        # Determine the week span
-        monday = local_dt.date() - timedelta(days=local_dt.weekday())
-        sunday = monday + timedelta(days=6)
-        week_key = (monday, sunday)
-        weekly[week_key].append((p.employee_id, local_dt))
+        local_dt = round_to_15(local_dt)
+        by_emp[p.employee_id].append((p.type, local_dt))
 
-    # Anything older than 4 weeks?  Move into months
-    four_weeks_ago = (datetime.now(tz).date() 
-                      - timedelta(weeks=4))
-    monthly = defaultdict(list)
-    for (monday, sunday), entries in list(weekly.items()):
-        if sunday < four_weeks_ago:
-            # pull out and re‐bucket by month
-            for eid, dt in entries:
-                month_key = dt.strftime('%Y-%m')
-                monthly[month_key].append((eid, dt))
-            del weekly[(monday, sunday)]
+    def compute_seconds(events):
+        events.sort(key=lambda x: x[1])
+        total = 0
+        last_in = None
+        for t, ts in events:
+            if t == "IN":
+                last_in = ts
+            elif t == "OUT" and last_in:
+                delta = (ts - last_in).total_seconds()
+                if delta > 0:
+                    total += delta
+                last_in = None
+        return int(total)
 
-    # Now build display structures
-    def summarize(entries):
-        by_emp = defaultdict(list)
-        for eid, dt in entries:
-            by_emp[eid].append(dt)
-        rows = []
-        for eid, times in by_emp.items():
-            times.sort()
-            stats = compute_shifts(times)
-            emp   = Employee.query.get(eid)
-            rows.append({
-                'employee': emp.name,
-                'total':    stats['total']
-            })
-        return rows
+    out = io.StringIO()
+    w = csv.writer(out)
+    w.writerow(["Location", "Week Start (Mon)", "Employee", "Total Hours (Rounded 15)", "Regular Hours", "Overtime Hours"])
 
-    report_weeks = OrderedDict()
-    for (monday, sunday), entries in sorted(weekly.items()):
-        label = f"{monday:%-m/%-d/%y}–{sunday:%-m/%-d/%y}"
-        report_weeks[label] = summarize(entries)
+    for emp in (Employee.query.filter(Employee.location_id == loc_id).order_by(Employee.name.asc()).all()):
+        secs = compute_seconds(by_emp.get(emp.id, []))
+        remainder = secs % 900
+        secs_rounded = secs - remainder if remainder < 450 else secs + (900 - remainder)
 
-    report_months = OrderedDict()
-    for month_key, entries in sorted(monthly.items()):
-        # month_key = '2025-04', make it pretty:
-        dt = datetime.strptime(month_key, '%Y-%m')
-        label = dt.strftime('%B %Y')
-        report_months[label] = summarize(entries)
+        total_hours = round(secs_rounded / 3600, 2)
+        reg = round(min(total_hours, 40.0), 2)
+        ot  = round(max(total_hours - 40.0, 0.0), 2)
 
-    return render_template('report.html',
-                           weeks=report_weeks,
-                           months=report_months,
-                           loc=loc,
-                           locations=Location.query.all())
+        # Hide terminated employees with no hours
+        if total_hours == 0 and getattr(emp, "active", True) is False:
+            continue
 
-from flask import request, flash
-from collections import defaultdict
-import math
+        w.writerow([loc.name, week_start_date.isoformat(), emp.name, f"{total_hours:.2f}", f"{reg:.2f}", f"{ot:.2f}"])
 
-from flask import request, flash
-from collections import defaultdict
-import math
+    filename = f"payroll_{loc.name}_{week_start_date.isoformat()}.csv"
+    return Response(
+        out.getvalue().encode("utf-8"),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+    
+@app.route('/api/employee_status/<int:employee_id>')
+def api_employee_status(employee_id: int):
+    emp = Employee.query.get(employee_id)
+    if not emp or getattr(emp, "active", True) is False:
+        return jsonify({"ok": False, "status": "INACTIVE"}), 404
 
-from flask import request, flash, redirect, url_for
-from collections import defaultdict
-import math
+    last = (Punch.query
+            .filter_by(employee_id=employee_id)
+            .order_by(Punch.timestamp.desc())
+            .first())
+
+    if not last:
+        return jsonify({"ok": True, "status": "OUT", "last_type": None, "last_time": None})
+
+    status = "IN" if last.type == "IN" else "OUT"
+    return jsonify({
+        "ok": True,
+        "status": status,
+        "last_type": last.type,
+        "last_time_utc": last.timestamp.isoformat()
+    })
+
 
 @app.route('/weekly_report')
-@login_required
+@manager_required
 def weekly_report():
     """
     Detailed weekly report showing every IN/OUT (rounded to 15min) for each employee,
@@ -347,7 +649,19 @@ def weekly_report():
         by_emp[p.employee_id][local_date].append((p.type, rounded_dt))
 
     # 10) Fetch all employees at this location
-    employees = Employee.query.filter_by(location_id=loc_id).order_by(Employee.name).all()
+    # ✅ Hide terminated employees unless they have punches in the selected week
+    emp_ids_with_punches = {p.employee_id for p in punches}
+    
+    employees = (
+        Employee.query
+        .filter(Employee.location_id == loc_id)
+        .filter(
+            (Employee.active.is_(True)) |
+            (Employee.id.in_(emp_ids_with_punches))
+        )
+        .order_by(Employee.active.desc(), Employee.name.asc())
+        .all()
+    )
 
     # 11) Precompute the seven Monday→Sunday dates
     dates = [week_start_date + timedelta(days=i) for i in range(7)]
@@ -407,11 +721,8 @@ def weekly_report():
     )
 
 @app.route('/manage_employees', methods=['GET','POST'])
-@login_required
+@manager_required
 def manage_employees():
-    if not current_user.is_manager:
-        flash('Not authorized', 'danger')
-        return redirect(url_for('index'))
 
     if request.method == 'POST':
         if 'add' in request.form:
@@ -425,7 +736,8 @@ def manage_employees():
             emp = Employee.query.get(eid)
             if emp:
                 emp.active = False
-                flash(f'Employee "{emp.name}" deactivated.', 'success')
+                emp.terminated_at = datetime.utcnow()
+                flash(f'Removed "{emp.name}" from active roster (history preserved).', 'success')
             else:
                 flash('Employee not found.', 'warning')
 
@@ -434,7 +746,8 @@ def manage_employees():
             emp = Employee.query.get(eid)
             if emp:
                 emp.active = True
-                flash(f'Employee "{emp.name}" reactivated.', 'success')
+                emp.terminated_at = None
+                flash(f'Reactivated "{emp.name}".', 'success')
             else:
                 flash('Employee not found.', 'warning')
 
@@ -483,7 +796,7 @@ def manager_login():
         if u and u.check_password(request.form['password']) and u.is_manager:
             login_user(u)
             # Redirect manager to /report (default loc=1)
-            return redirect(url_for('report', loc=1))
+            return redirect(url_for('weekly_report', loc=1))
         flash('Invalid manager credentials', 'danger')
         return redirect(url_for('manager_login'))
 

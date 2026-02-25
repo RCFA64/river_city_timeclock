@@ -76,3 +76,152 @@ select,
   color: var(--bs-light) !important;
   opacity: 1 !important;
 }
+
+/* =========================================================
+   RCFA Time Clock - Professional UI layer
+   (Append-only additions; safe with existing theme)
+   ========================================================= */
+
+/* Navbar polish */
+.rcfa-navbar {
+  background: #1f1f1f !important;
+}
+
+.brand-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--bs-primary);
+  box-shadow: 0 0 0 3px rgba(212,175,55,.15);
+  display: inline-block;
+}
+
+/* Card polish */
+.card {
+  border-radius: 14px;
+}
+
+.border-light {
+  border-color: rgba(255,255,255,.18) !important;
+}
+
+/* Buttons */
+.btn {
+  border-radius: 12px;
+}
+
+/* Form controls - modern look on dark */
+.form-control,
+.form-select {
+  border-radius: 12px !important;
+}
+
+/* Subtle separators */
+hr.border-secondary {
+  opacity: .35;
+}
+
+/* =========================================================
+   KIOSK MODE (tablet / wall mounted)
+   ========================================================= */
+
+.kiosk-body {
+  background: radial-gradient(1200px 600px at 10% 0%, rgba(212,175,55,.10), transparent 55%),
+              radial-gradient(900px 500px at 90% 0%, rgba(255,255,255,.06), transparent 60%),
+              var(--bs-body-bg) !important;
+}
+
+.kiosk-flash-wrap {
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  right: 14px;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.kioskHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 22px 22px 10px 22px;
+}
+
+.kioskBrand .kioskTitle {
+  font-weight: 900;
+  letter-spacing: .3px;
+  font-size: 28px;
+  line-height: 1.1;
+}
+
+.kioskBrand .kioskSub {
+  color: rgba(248,249,250,.75);
+  margin-top: 6px;
+}
+
+.kioskDate {
+  color: rgba(248,249,250,.75);
+  font-weight: 700;
+  margin-top: 4px;
+  white-space: nowrap;
+}
+
+.kioskCard {
+  margin: 0 22px 22px 22px;
+  padding: 18px;
+  border: 1px solid rgba(255,255,255,.16);
+  background: rgba(31,31,31,.75);
+  backdrop-filter: blur(10px);
+  border-radius: 18px;
+}
+
+.kioskLabel {
+  font-weight: 900;
+  letter-spacing: .2px;
+}
+
+.kioskSelect {
+  font-weight: 900;
+  letter-spacing: .2px;
+  padding-top: 14px !important;
+  padding-bottom: 14px !important;
+}
+
+.kioskBtn {
+  font-size: clamp(22px, 3.5vw, 42px);
+  font-weight: 1000;
+  letter-spacing: .5px;
+  padding: 22px 18px;
+  border-radius: 18px;
+  box-shadow: 0 10px 22px rgba(0,0,0,.35);
+}
+
+.kioskStatus {
+  width: 100%;
+  border-radius: 14px;
+  padding: 14px 14px;
+  font-weight: 1000;
+  text-align: center;
+  letter-spacing: .4px;
+  user-select: none;
+}
+
+.kioskFooter {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255,255,255,.12);
+}
+
+.kioskToast {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  font-weight: 900;
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.14);
+}
