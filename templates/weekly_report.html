@@ -103,7 +103,9 @@
   <!-- ──────────────────────────────────────────────────────────────────────────── -->
 
   <div class="mt-4">
-    <a href="{{ url_for('report', loc=loc.id) }}" class="btn btn-outline-light">
+    <a href="{{ url_for('payroll_export_csv', loc=loc.id, week_start=selected_monday.isoformat()) }}" class="btn btn-outline-light">
+      Export Payroll CSV
+    </a>
       ← Back to Summary
     </a>
   </div>

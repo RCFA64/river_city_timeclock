@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Admin • Audit Log{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+  <div>
+    <h2 class="fw-bold mb-1">Audit Log</h2>
+    <div class="text-secondary">Last 250 punch modifications.</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-light btn-sm" href="{{ url_for('admin_punches') }}">Punches</a>
+    <a class="btn btn-outline-light btn-sm" href="{{ url_for('weekly_report', loc=1) }}">Weekly Report</a>
+  </div>
+</div>
+
+<div class="card bg-dark border-light">
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-dark table-striped align-middle mb-0">
+        <thead>
+          <tr>
+            <th style="width:180px;">When (UTC)</th>
+            <th style="width:90px;">Action</th>
+            <th>Employee</th>
+            <th style="width:140px;">By</th>
+            <th style="width:90px;">Old</th>
+            <th style="width:90px;">New</th>
+            <th>Note</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if not rows %}
+            <tr><td colspan="7" class="text-center text-secondary py-4">No audit entries yet.</td></tr>
+          {% endif %}
+
+          {% for r in rows %}
+            <tr>
+              <td class="text-nowrap">{{ r.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+              <td><span class="badge bg-info text-dark">{{ r.action }}</span></td>
+              <td class="fw-semibold">{{ r.employee }}</td>
+              <td>{{ r.changed_by }}</td>
+              <td>{{ r.old_type or "—" }}</td>
+              <td>{{ r.new_type or "—" }}</td>
+              <td class="text-secondary">{{ r.note }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

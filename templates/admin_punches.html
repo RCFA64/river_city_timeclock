@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Admin • Punches{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+  <div>
+    <h2 class="fw-bold mb-1">Punches</h2>
+    <div class="text-secondary">Review and edit punches by location and week.</div>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-light btn-sm" href="{{ url_for('admin_audit') }}">Audit Log</a>
+    <a class="btn btn-outline-light btn-sm" href="{{ url_for('weekly_report', loc=loc.id) }}">Weekly Report</a>
+  </div>
+</div>
+
+<div class="card bg-dark border-light mb-3">
+  <div class="card-body">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-12 col-md-5">
+        <label class="form-label text-secondary">Location</label>
+        <select class="form-select" name="loc" onchange="this.form.submit()">
+          {% for L in locations %}
+            <option value="{{L.id}}" {% if L.id == loc.id %}selected{% endif %}>{{L.name}}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12 col-md-5">
+        <label class="form-label text-secondary">Week (Monday)</label>
+        <select class="form-select" name="week_start" onchange="this.form.submit()">
+          {% for m in mondays %}
+            <option value="{{ m.isoformat() }}" {% if m == selected_monday %}selected{% endif %}>
+              {{ m.strftime("%Y-%m-%d") }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12 col-md-2 d-grid">
+        <a class="btn btn-outline-light" href="{{ url_for('payroll_export_csv', loc=loc.id, week_start=selected_monday.isoformat()) }}">
+          Export CSV
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card bg-dark border-light">
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-dark table-striped align-middle mb-0">
+        <thead>
+          <tr>
+            <th style="width:110px;">Type</th>
+            <th>Employee</th>
+            <th style="width:220px;">Local Time</th>
+            <th style="width:140px;" class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if not rows %}
+            <tr><td colspan="4" class="text-center text-secondary py-4">No punches found for this week.</td></tr>
+          {% endif %}
+
+          {% for r in rows %}
+            <tr>
+              <td>
+                {% if r.type == 'IN' %}
+                  <span class="badge bg-success">IN</span>
+                {% else %}
+                  <span class="badge bg-danger">OUT</span>
+                {% endif %}
+              </td>
+              <td class="fw-semibold">{{ r.employee }}</td>
+              <td class="text-nowrap">{{ r.local_str }}</td>
+              <td class="text-end">
+                <a class="btn btn-sm btn-outline-light" href="{{ url_for('admin_edit_punch', punch_id=r.id) }}">Edit</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
