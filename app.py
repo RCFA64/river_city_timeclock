@@ -215,9 +215,9 @@ def punch():
 # ----------------------------
 @app.route('/kiosk')
 def kiosk():
-
+    # Optional kiosk protection via URL key
     if KIOSK_KEY and request.args.get("key") != KIOSK_KEY:
-    return "Unauthorized", 401
+        return "Unauthorized", 401
 
     locs = Location.query.order_by(Location.name).all()
     if not locs:
