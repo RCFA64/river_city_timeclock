@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}Admin • Dashboard{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+  <div>
+    <h2 class="fw-bold mb-1">Admin Dashboard</h2>
+    <div class="text-secondary">Enterprise control panel • Full system access</div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-outline-light btn-sm" href="{{ url_for('admin_users') }}">Users</a>
+    <a class="btn btn-outline-light btn-sm" href="{{ url_for('manage_employees') }}">Employees</a>
+    <a class="btn btn-outline-light btn-sm" href="{{ url_for('admin_punches') }}">Punches</a>
+    <a class="btn btn-outline-light btn-sm" href="{{ url_for('admin_audit') }}">Audit Log</a>
+  </div>
+</div>
+
+<!-- KPI STRIP -->
+<div class="row g-3 mb-3">
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card bg-dark border-light h-100">
+      <div class="card-body">
+        <div class="text-secondary small">Users</div>
+        <div class="display-6 fw-bold">{{ stats.users_total }}</div>
+        <div class="text-secondary small mt-1">Roles • Access • Activation</div>
+        <a class="btn btn-primary w-100 mt-3" href="{{ url_for('admin_users') }}">Manage Users</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card bg-dark border-light h-100">
+      <div class="card-body">
+        <div class="text-secondary small">Employees</div>
+        <div class="display-6 fw-bold">{{ stats.employees_active }}</div>
+        <div class="text-secondary small mt-1">{{ stats.employees_total }} total • {{ stats.employees_active }} active</div>
+        <a class="btn btn-primary w-100 mt-3" href="{{ url_for('manage_employees') }}">Manage Employees</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card bg-dark border-light h-100">
+      <div class="card-body">
+        <div class="text-secondary small">Punches</div>
+        <div class="display-6 fw-bold">{{ stats.punches_total }}</div>
+        <div class="text-secondary small mt-1">Review • Edit • Delete</div>
+        <a class="btn btn-primary w-100 mt-3" href="{{ url_for('admin_punches') }}">Open Punches</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-md-6 col-xl-3">
+    <div class="card bg-dark border-light h-100">
+      <div class="card-body">
+        <div class="text-secondary small">Audit</div>
+        <div class="display-6 fw-bold">{{ stats.audit_total }}</div>
+        <div class="text-secondary small mt-1">Immutable change log</div>
+        <a class="btn btn-primary w-100 mt-3" href="{{ url_for('admin_audit') }}">View Audit Log</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- LOCATION OPERATIONS -->
+<div class="card bg-dark border-light mb-3">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+      <div class="fw-bold">Location Operations</div>
+      <div class="text-secondary small">Weekly Reports • Punch Review • Payroll Export</div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-dark table-striped align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Location</th>
+            <th style="width:160px;" class="text-end">Weekly Report</th>
+            <th style="width:140px;" class="text-end">Punches</th>
+            <th style="width:160px;" class="text-end">Payroll Export</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for L in locations %}
+          <tr>
+            <td class="fw-semibold">{{ L.name }}</td>
+            <td class="text-end">
+              <a class="btn btn-sm btn-outline-light" href="{{ url_for('weekly_report', loc=L.id) }}">Open</a>
+            </td>
+            <td class="text-end">
+              <a class="btn btn-sm btn-outline-light" href="{{ url_for('admin_punches', loc=L.id) }}">Review</a>
+            </td>
+            <td class="text-end">
+              {# Payroll export uses week_start; admins can pick it on the punches page #}
+              <a class="btn btn-sm btn-outline-light" href="{{ url_for('admin_punches', loc=L.id) }}">Choose Week → Export</a>
+            </td>
+          </tr>
+          {% endfor %}
+          {% if not locations %}
+          <tr><td colspan="4" class="text-center text-secondary py-4">No locations found.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- RECENT AUDIT -->
+<div class="card bg-dark border-light">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+      <div class="fw-bold">Recent Admin Activity</div>
+      <a class="btn btn-sm btn-outline-light" href="{{ url_for('admin_audit') }}">Open Full Audit</a>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-dark table-striped align-middle mb-0">
+        <thead>
+          <tr>
+            <th style="width:140px;">Action</th>
+            <th style="width:220px;">When</th>
+            <th>Note</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in recent_audit %}
+          <tr>
+            <td class="fw-semibold">{{ a.action }}</td>
+            <td class="text-nowrap">{{ a.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+            <td class="text-secondary">{{ a.note or "—" }}</td>
+          </tr>
+          {% endfor %}
+          {% if not recent_audit %}
+          <tr><td colspan="3" class="text-center text-secondary py-4">No audit activity yet.</td></tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

@@ -1043,25 +1043,54 @@ def login():
         # ✅ Redirect based on role
         role = (getattr(u, "role", "employee") or "employee").lower()
 
-        if role in ("supervisor", "admin"):
-            # Supervisors default to their assigned location; admins can be global
+        if role == "admin":
+            return redirect(url_for("admin_home"))
+        
+        if role == "supervisor":
             loc_id = getattr(u, "location_id", None) or 1
-            return redirect(url_for('weekly_report', loc=int(loc_id)))
+            return redirect(url_for("weekly_report", loc=int(loc_id)))
 
         return redirect(url_for('index'))
 
     return render_template('login.html')
 
+
 @app.route("/admin")
 @admin_required
-def admin_home():
-    # Send admins to the most powerful admin page you already have
-    return redirect(url_for("users"))
+def admin_root():
+    return redirect(url_for("admin_dashboard"))
     
 @app.route('/manager_login', methods=['GET','POST'])
 def manager_login():
     # ✅ Backward compatibility: old bookmark -> new unified login
     return redirect(url_for('login'))
+
+@app.route("/admin/dashboard")
+@admin_required
+def admin_dashboard():
+    # Enterprise hub metrics
+    locations = Location.query.order_by(Location.name.asc()).all()
+
+    stats = {
+        "users_total": User.query.count(),
+        "employees_total": Employee.query.count(),
+        "employees_active": Employee.query.filter_by(active=True).count(),
+        "punches_total": Punch.query.count(),
+        "audit_total": PunchAudit.query.count(),
+    }
+
+    # Latest audit entries (lightweight)
+    recent_audit = (PunchAudit.query
+                    .order_by(PunchAudit.created_at.desc())
+                    .limit(12)
+                    .all())
+
+    return render_template(
+        "admin/dashboard.html",
+        locations=locations,
+        stats=stats,
+        recent_audit=recent_audit,
+    )
 
 @app.route('/logout')
 @login_required
