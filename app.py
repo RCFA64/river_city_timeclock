@@ -195,6 +195,22 @@ with app.app_context():
     db.create_all()
     ensure_schema()
 
+    # ----------------------------
+    # ✅ Bootstrap: create first admin user (one-time)
+    # Controlled via ENV so you can remove/rotate safely.
+    # ----------------------------
+    bootstrap_user = (os.environ.get("BOOTSTRAP_ADMIN_USERNAME") or "").strip()
+    bootstrap_pass = (os.environ.get("BOOTSTRAP_ADMIN_PASSWORD") or "").strip()
+
+    if bootstrap_user and bootstrap_pass:
+        existing_admin = User.query.filter_by(role="admin").first()
+        if not existing_admin:
+            u = User(username=bootstrap_user, role="admin", active=True, location_id=None)
+            u.set_password(bootstrap_pass)
+            db.session.add(u)
+            db.session.commit()
+            print(f"✅ Bootstrapped admin user: {bootstrap_user}")
+                
     coords = [
         ('Sacramento',   38.535168, -121.3661184),
         ('Dallas',       32.5372008,  -96.7493993),
