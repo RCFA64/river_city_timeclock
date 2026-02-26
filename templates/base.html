@@ -29,7 +29,6 @@
 
       <div class="collapse navbar-collapse" id="rcfaNav">
         <div class="ms-auto d-flex flex-wrap gap-2 align-items-center">
-
           {% if current_user.is_authenticated and current_user.is_admin %}
             <!-- ✅ ADMIN: Full access -->
             <a class="btn btn-outline-light btn-sm" href="{{ url_for('admin_dashboard') }}">Admin Dashboard</a>
@@ -39,19 +38,22 @@
             <a class="btn btn-outline-light btn-sm" href="{{ url_for('admin_users') }}">Users</a>
             <a class="btn btn-outline-light btn-sm" href="{{ url_for('admin_audit') }}">Audit Log</a>
             <a class="btn btn-warning btn-sm" href="{{ url_for('logout') }}">Logout</a>
-          
+        
           {% elif current_user.is_authenticated and current_user.is_supervisor %}
-            <!-- ✅ SUPERVISOR: Reports + punches -->
-            <a class="btn btn-outline-light btn-sm" href="{{ url_for('weekly_report', loc=(current_user.location_id or 1)) }}">Weekly Report</a>
-            <a class="btn btn-outline-light btn-sm" href="{{ url_for('admin_punches', loc=(current_user.location_id or 1)) }}">Punches</a>
+            <!-- ✅ SUPERVISOR -->
+            <a class="btn btn-outline-light btn-sm"
+               href="{{ url_for('weekly_report', loc=(current_user.location_id or 1)) }}">Weekly Report</a>
+            <a class="btn btn-outline-light btn-sm"
+               href="{{ url_for('admin_punches', loc=(current_user.location_id or 1)) }}">Punches</a>
             <a class="btn btn-outline-light btn-sm" href="{{ url_for('admin_audit') }}">Audit Log</a>
             <a class="btn btn-warning btn-sm" href="{{ url_for('logout') }}">Logout</a>
-          
+        
           {% elif current_user.is_authenticated %}
+            <!-- ✅ EMPLOYEE -->
             <a class="btn btn-outline-light btn-sm" href="{{ url_for('logout') }}">Logout</a>
+        
           {% else %}
-            <a class="btn btn-outline-light btn-sm" href="{{ url_for('logout') }}">Logout</a>
-          {% else %}
+            <!-- ✅ NOT LOGGED IN -->
             <a class="btn btn-outline-light btn-sm" href="{{ url_for('login') }}">Employee Login</a>
             <a class="btn btn-outline-light btn-sm" href="{{ url_for('manager_login') }}">Manager Login</a>
           {% endif %}

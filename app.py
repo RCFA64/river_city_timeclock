@@ -1044,7 +1044,7 @@ def login():
         role = (getattr(u, "role", "employee") or "employee").lower()
 
         if role == "admin":
-            return redirect(url_for("admin_home"))
+            return redirect(url_for("admin_dashboard"))
         
         if role == "supervisor":
             loc_id = getattr(u, "location_id", None) or 1
