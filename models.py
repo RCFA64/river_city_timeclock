@@ -62,7 +62,7 @@ class User(UserMixin, db.Model):
     __tablename__ = 'users'
     id            = db.Column(db.Integer, primary_key=True)
     username      = db.Column(db.String(50), unique=True, nullable=False)
-    password_hash = db.Column(db.String(256), nullable=False)
+    password_hash = db.Column(db.String(512), nullable=False)
     # ✅ Role-based access
     # employee = can clock only
     # supervisor = can view reports + edit punches
@@ -71,6 +71,10 @@ class User(UserMixin, db.Model):
     
     # ✅ Allow disabling accounts without deleting history
     active = db.Column(db.Boolean, default=True, nullable=False)
+
+    # ✅ Scope supervisors to one location (Admins can be global / None)
+    location_id = db.Column(db.Integer, db.ForeignKey('locations.id'), nullable=True)
+    location = db.relationship('Location')
 
     def set_password(self, pwd):
         self.password_hash = generate_password_hash(pwd)

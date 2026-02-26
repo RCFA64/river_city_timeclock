@@ -33,6 +33,7 @@
           {% if current_user.is_authenticated and current_user.is_manager %}
             <a class="btn btn-outline-light btn-sm" href="{{ url_for('weekly_report', loc=1) }}">Weekly Report</a>
             <a class="btn btn-outline-light btn-sm" href="{{ url_for('manage_employees') }}">Employees</a>
+            <a class="btn btn-outline-light btn-sm" href="{{ url_for('admin_users') }}">Users</a>
             <a class="btn btn-outline-light btn-sm" href="{{ url_for('admin_punches') }}">Punches</a>
             <a class="btn btn-outline-light btn-sm" href="{{ url_for('admin_audit') }}">Audit Log</a>
             <a class="btn btn-warning btn-sm" href="{{ url_for('logout') }}">Logout</a>

@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, current_app, jsonify, Response
+from flask import Flask, render_template, request, redirect, url_for, flash, current_app, jsonify, Response, abort
 from flask_login import (
     LoginManager, login_user, logout_user,
     login_required, current_user
@@ -24,11 +24,11 @@ TIMEZONES = {
     'Indianapolis': 'America/New_York'
 }
 
-KIOSK_KEY = os.environ.get("KIOSK_KEY", "")
-
 app = Flask(__name__)
 
 load_dotenv()
+
+KIOSK_KEY = os.environ.get("KIOSK_KEY", "")
 
 app.config.update(
     SECRET_KEY=os.environ.get('SECRET_KEY', 'dev-secret-change-me'),
@@ -59,6 +59,60 @@ def manager_required(fn):
         return fn(*args, **kwargs)
     return wrapper
 
+# ----------------------------
+# ✅ Role-based guards
+# ----------------------------
+def supervisor_required(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not current_user.is_authenticated:
+            flash("Login required.", "warning")
+            return redirect(url_for("login", next=request.path))
+
+        if getattr(current_user, "active", True) is False:
+            flash("Account disabled. Contact an admin.", "danger")
+            return redirect(url_for("login"))
+
+        if not getattr(current_user, "is_supervisor", False):
+            flash("Supervisor access required.", "warning")
+            return redirect(url_for("index"))
+        return fn(*args, **kwargs)
+    return wrapper
+
+
+def admin_required(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not current_user.is_authenticated:
+            flash("Login required.", "warning")
+            return redirect(url_for("login", next=request.path))
+
+        if getattr(current_user, "active", True) is False:
+            flash("Account disabled. Contact an admin.", "danger")
+            return redirect(url_for("login"))
+
+        if not getattr(current_user, "is_admin", False):
+            flash("Admin access required.", "warning")
+            return redirect(url_for("index"))
+        return fn(*args, **kwargs)
+    return wrapper
+
+def require_user_location_scope(target_location_id: int):
+    """
+    ✅ Supervisors are locked to their assigned location.
+    ✅ Admins can access all locations.
+    """
+    if getattr(current_user, "is_admin", False):
+        return
+
+    user_loc_id = getattr(current_user, "location_id", None)
+    if not user_loc_id:
+        flash("Your supervisor account is not assigned to a location. Contact an admin.", "danger")
+        abort(403)
+
+    if int(user_loc_id) != int(target_location_id):
+        flash("Access denied: you can only manage your assigned location.", "danger")
+        abort(403)
 
 def ensure_schema():
     """
@@ -117,13 +171,25 @@ def ensure_schema():
             except Exception:
                 db.session.rollback()
 
+        insp = inspect(db.engine)                
+
+        
         # ✅ If you still have legacy is_manager values in DB, upgrade them to role=admin
         # (only runs safely if is_manager column exists)
         try:
             db.session.execute(text("UPDATE users SET role='admin' WHERE role='employee' AND is_manager=TRUE"))
             db.session.commit()
         except Exception:
-            db.session.rollback()        
+            db.session.rollback()    
+
+        # ✅ Users: add location_id if missing
+        ucols = {c["name"] for c in insp.get_columns("users")}
+        if "location_id" not in ucols:
+            try:
+                db.session.execute(text("ALTER TABLE users ADD COLUMN location_id INTEGER NULL"))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
 
 with app.app_context():
     db.create_all()
@@ -279,10 +345,97 @@ def kiosk():
     )
 
 # ----------------------------
+# ✅ ADMIN: User Management
+# ----------------------------
+@app.route("/admin/users", methods=["GET", "POST"])
+@admin_required
+def admin_users():
+    if request.method == "POST":
+        action = request.form.get("action")
+
+        if action == "create":
+            username = (request.form.get("username") or "").strip()
+            password = (request.form.get("password") or "").strip()
+            role = (request.form.get("role") or "employee").strip().lower()
+            location_id = request.form.get("location_id", type=int)            
+
+            if role not in ("employee", "supervisor", "admin"):
+                flash("Invalid role.", "warning")
+                return redirect(url_for("admin_users"))
+
+            if not username or not password:
+                flash("Username and password are required.", "warning")
+                return redirect(url_for("admin_users"))
+
+            if User.query.filter_by(username=username).first():
+                flash("Username already exists.", "warning")
+                return redirect(url_for("admin_users"))
+
+            u = User(username=username, role=role, active=True, location_id=location_id)
+            u.set_password(password)
+            db.session.add(u)
+            db.session.commit()
+            flash("User created.", "success")
+            return redirect(url_for("admin_users"))
+
+        if action == "set_location":
+            uid = int(request.form.get("user_id"))
+            location_id = request.form.get("location_id", type=int)
+
+            u = User.query.get_or_404(uid)
+            u.location_id = location_id
+            db.session.commit()
+            flash("Location updated.", "success")
+            return redirect(url_for("admin_users"))
+
+        if action == "toggle_active":
+            uid = int(request.form.get("user_id"))
+            u = User.query.get_or_404(uid)
+
+            if u.id == current_user.id:
+                flash("You cannot disable your own account.", "warning")
+                return redirect(url_for("admin_users"))
+
+            u.active = not getattr(u, "active", True)
+            db.session.commit()
+            flash("User updated.", "success")
+            return redirect(url_for("admin_users"))
+
+        if action == "reset_password":
+            uid = int(request.form.get("user_id"))
+            newpw = (request.form.get("new_password") or "").strip()
+            if not newpw:
+                flash("Password required.", "warning")
+                return redirect(url_for("admin_users"))
+
+            u = User.query.get_or_404(uid)
+            u.set_password(newpw)
+            db.session.commit()
+            flash("Password reset.", "success")
+            return redirect(url_for("admin_users"))
+
+        if action == "set_role":
+            uid = int(request.form.get("user_id"))
+            role = (request.form.get("role") or "").strip().lower()
+            if role not in ("employee", "supervisor", "admin"):
+                flash("Invalid role.", "warning")
+                return redirect(url_for("admin_users"))
+
+            u = User.query.get_or_404(uid)
+            u.role = role
+            db.session.commit()
+            flash("Role updated.", "success")
+            return redirect(url_for("admin_users"))
+
+    users = User.query.order_by(User.active.desc(), User.role.asc(), User.username.asc()).all()
+    locations = Location.query.order_by(Location.name.asc()).all()
+    return render_template("admin_users.html", users=users, locations=locations)
+
+# ----------------------------
 # ✅ ADMIN: Punch edit + audit log
 # ----------------------------
 @app.route('/admin/punches')
-@manager_required
+@supervisor_required
 def admin_punches():
     locations = Location.query.order_by(Location.name).all()
     if not locations:
@@ -298,6 +451,10 @@ def admin_punches():
     if not loc:
         loc = locations[0]
         loc_id = loc.id
+
+
+    # ✅ Supervisors can only manage punches for their assigned location
+    require_user_location_scope(loc_id)
 
     tz = ZoneInfo(TIMEZONES[loc.name])
     today_local = datetime.now(tz)
@@ -361,10 +518,12 @@ def admin_punches():
 
 
 @app.route('/admin/punch/<int:punch_id>/edit', methods=['GET','POST'])
-@manager_required
+@supervisor_required
 def admin_edit_punch(punch_id: int):
     p = Punch.query.get_or_404(punch_id)
 
+    require_user_location_scope(p.employee.location_id)
+    
     if request.method == 'POST':
         new_type = (request.form.get("type") or "").strip().upper()
         new_ts_str = (request.form.get("timestamp") or "").strip()
@@ -418,9 +577,11 @@ def admin_edit_punch(punch_id: int):
     )
 
 @app.route('/admin/punch/<int:punch_id>/delete', methods=['POST'])
-@supervisor_required  # or @manager_required if you're still using that
+@supervisor_required
 def admin_delete_punch(punch_id: int):
     p = Punch.query.get_or_404(punch_id)
+
+    require_user_location_scope(p.employee.location_id)
 
     note = (request.form.get("note") or "").strip()[:500]
 
@@ -443,14 +604,25 @@ def admin_delete_punch(punch_id: int):
 
     flash("Punch deleted (audit logged).", "success")
     return redirect(url_for("admin_punches", loc=loc_id))
-    
+
 @app.route('/admin/audit')
-@manager_required
+@supervisor_required
 def admin_audit():
-    q = (PunchAudit.query
-         .order_by(PunchAudit.created_at.desc())
-         .limit(250)
-         .all())
+    q = PunchAudit.query
+
+    # ✅ Supervisors: only see audits for their assigned location
+    if not getattr(current_user, "is_admin", False):
+        user_loc_id = getattr(current_user, "location_id", None)
+        if not user_loc_id:
+            flash("Your supervisor account is not assigned to a location. Contact an admin.", "danger")
+            abort(403)
+
+        q = (q.join(Employee, Employee.id == PunchAudit.employee_id)
+               .filter(Employee.location_id == int(user_loc_id)))
+
+    q = (q.order_by(PunchAudit.created_at.desc())
+           .limit(250)
+           .all())
 
     rows = []
     for a in q:
@@ -470,7 +642,7 @@ def admin_audit():
     return render_template("admin_audit.html", rows=rows)
 
 @app.route('/admin/payroll_export.csv')
-@manager_required
+@admin_required
 def payroll_export_csv():
     locations = Location.query.order_by(Location.name).all()
     if not locations:
@@ -627,6 +799,10 @@ def weekly_report():
         flash('Invalid location', 'danger')
         return redirect(url_for('weekly_report', loc=locations[0].id))
 
+
+    # ✅ Supervisors can only view their own location
+    require_user_location_scope(loc_id)
+
     # 3) Compute local timezone and “today” in that tz
     tz = ZoneInfo(TIMEZONES[loc.name])
     today_local = datetime.now(tz)
@@ -779,7 +955,7 @@ def weekly_report():
     )
 
 @app.route('/manage_employees', methods=['GET','POST'])
-@manager_required
+@admin_required
 def manage_employees():
 
     if request.method == 'POST':
@@ -833,7 +1009,10 @@ def login():
     """
     if request.method == 'POST':
         u = User.query.filter_by(username=request.form['username']).first()
-        if u and u.check_password(request.form['password']) and not u.is_manager:
+        if u and getattr(u, "active", True) is False:
+            flash("Account disabled. Contact an admin.", "danger")
+            return redirect(url_for('login'))
+        if u and u.check_password(request.form['password']) and (getattr(u, "role", "employee") == "employee"):
             login_user(u)
             return redirect(url_for('index'))
         flash('Invalid employee credentials', 'danger')
@@ -851,7 +1030,10 @@ def manager_login():
     """
     if request.method == 'POST':
         u = User.query.filter_by(username=request.form['username']).first()
-        if u and u.check_password(request.form['password']) and u.is_manager:
+        if u and getattr(u, "active", True) is False:
+            flash("Account disabled. Contact an admin.", "danger")
+            return redirect(url_for('manager_login'))
+        if u and u.check_password(request.form['password']) and (getattr(u, "role", "employee") in ("supervisor", "admin")):
             login_user(u)
             # Redirect manager to /report (default loc=1)
             return redirect(url_for('weekly_report', loc=1))
