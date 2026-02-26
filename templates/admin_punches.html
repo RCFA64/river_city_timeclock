@@ -74,7 +74,16 @@
               <td class="fw-semibold">{{ r.employee }}</td>
               <td class="text-nowrap">{{ r.local_str }}</td>
               <td class="text-end">
-                <a class="btn btn-sm btn-outline-light" href="{{ url_for('admin_edit_punch', punch_id=r.id) }}">Edit</a>
+                <div class="d-flex justify-content-end gap-2">
+                  <a class="btn btn-sm btn-outline-light" href="{{ url_for('admin_edit_punch', punch_id=r.id) }}">Edit</a>
+              
+                  <form method="post"
+                        action="{{ url_for('admin_delete_punch', punch_id=r.id) }}"
+                        onsubmit="return confirm('DELETE this punch? This cannot be undone.');">
+                    <input type="hidden" name="note" value="Deleted from punches list">
+                    <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+                  </form>
+                </div>
               </td>
             </tr>
           {% endfor %}

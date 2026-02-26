@@ -97,7 +97,33 @@ def ensure_schema():
         db.create_all()
     except Exception:
         pass
+    
+    # ✅ Users: add role + active if missing
+    if "users" in insp.get_table_names():
+        ucols = {c["name"] for c in insp.get_columns("users")}
 
+        if "role" not in ucols:
+            try:
+                db.session.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR(20) NOT NULL DEFAULT 'employee'"))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+
+        ucols = {c["name"] for c in insp.get_columns("users")}
+        if "active" not in ucols:
+            try:
+                db.session.execute(text("ALTER TABLE users ADD COLUMN active BOOLEAN NOT NULL DEFAULT TRUE"))
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+
+        # ✅ If you still have legacy is_manager values in DB, upgrade them to role=admin
+        # (only runs safely if is_manager column exists)
+        try:
+            db.session.execute(text("UPDATE users SET role='admin' WHERE role='employee' AND is_manager=TRUE"))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()        
 
 with app.app_context():
     db.create_all()
@@ -391,7 +417,33 @@ def admin_edit_punch(punch_id: int):
         local_value=local_value
     )
 
+@app.route('/admin/punch/<int:punch_id>/delete', methods=['POST'])
+@supervisor_required  # or @manager_required if you're still using that
+def admin_delete_punch(punch_id: int):
+    p = Punch.query.get_or_404(punch_id)
 
+    note = (request.form.get("note") or "").strip()[:500]
+
+    # ✅ Audit log BEFORE deleting
+    db.session.add(PunchAudit(
+        punch_id=p.id,
+        employee_id=p.employee_id,
+        changed_by_user_id=getattr(current_user, "id", None),
+        action="DELETE",
+        old_type=p.type,
+        new_type=None,
+        old_timestamp=p.timestamp,
+        new_timestamp=None,
+        note=note or "Deleted punch",
+    ))
+
+    loc_id = p.employee.location_id  # keep for redirect after delete
+    db.session.delete(p)
+    db.session.commit()
+
+    flash("Punch deleted (audit logged).", "success")
+    return redirect(url_for("admin_punches", loc=loc_id))
+    
 @app.route('/admin/audit')
 @manager_required
 def admin_audit():
@@ -548,7 +600,7 @@ def api_employee_status(employee_id: int):
 
 
 @app.route('/weekly_report')
-@manager_required
+@supervisor_required
 def weekly_report():
     """
     Detailed weekly report showing every IN/OUT (rounded to 15min) for each employee,

@@ -63,10 +63,25 @@ class User(UserMixin, db.Model):
     id            = db.Column(db.Integer, primary_key=True)
     username      = db.Column(db.String(50), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
-    is_manager    = db.Column(db.Boolean, default=False)
+    # ✅ Role-based access
+    # employee = can clock only
+    # supervisor = can view reports + edit punches
+    # admin = can manage users + employees + payroll
+    role = db.Column(db.String(20), default="employee", nullable=False)
+    
+    # ✅ Allow disabling accounts without deleting history
+    active = db.Column(db.Boolean, default=True, nullable=False)
 
     def set_password(self, pwd):
         self.password_hash = generate_password_hash(pwd)
 
     def check_password(self, pwd):
         return check_password_hash(self.password_hash, pwd)
+
+    @property
+    def is_admin(self) -> bool:
+        return (self.role or "").lower() == "admin"
+    
+    @property
+    def is_supervisor(self) -> bool:
+        return (self.role or "").lower() in ("supervisor", "admin")    
