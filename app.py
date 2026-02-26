@@ -210,7 +210,7 @@ with app.app_context():
             db.session.add(u)
             db.session.commit()
             print(f"✅ Bootstrapped admin user: {bootstrap_user}")
-                
+
     coords = [
         ('Sacramento',   38.535168, -121.3661184),
         ('Dallas',       32.5372008,  -96.7493993),
@@ -1052,7 +1052,12 @@ def login():
 
     return render_template('login.html')
 
-
+@app.route("/admin")
+@admin_required
+def admin_home():
+    # Send admins to the most powerful admin page you already have
+    return redirect(url_for("users"))
+    
 @app.route('/manager_login', methods=['GET','POST'])
 def manager_login():
     # ✅ Backward compatibility: old bookmark -> new unified login
