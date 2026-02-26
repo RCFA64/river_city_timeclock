@@ -7,30 +7,99 @@
     href="https://cdn.jsdelivr.net/npm/bootstrap@5/dist/css/bootstrap.min.css"
     rel="stylesheet"
   />
-  <title>
-    {% if manager %}Manager Login{% else %}Employee Login{% endif %}
-  </title>
+
+  <title>River City Time Clock • Sign In</title>
+
   <style>
     body {
-      background: #f8f9fa;
-      color: #212529;
+      background:
+        radial-gradient(800px 500px at 10% 0%, rgba(212,175,55,.08), transparent 60%),
+        radial-gradient(900px 500px at 90% 0%, rgba(255,255,255,.05), transparent 60%),
+        #111;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #f8f9fa;
     }
-    .login-container {
-      max-width: 400px;
-      margin: 8vh auto;
-      padding: 2rem;
-      background: #ffffff;
-      border: 1px solid #dee2e6;
-      border-radius: 0.5rem;
-      box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+
+    .login-card {
+      width: 100%;
+      max-width: 460px;
+      padding: 2.5rem;
+      background: #1c1c1c;
+      border: 1px solid rgba(255,255,255,.15);
+      border-radius: 16px;
+      box-shadow: 0 25px 60px rgba(0,0,0,.5);
+    }
+
+    .brand-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: #d4af37;
+      box-shadow: 0 0 0 3px rgba(212,175,55,.15);
+      display: inline-block;
+    }
+
+    .brand-title {
+      font-weight: 900;
+      letter-spacing: .4px;
+    }
+
+    .brand-sub {
+      color: rgba(248,249,250,.6);
+      font-size: .9rem;
+    }
+
+    .form-control {
+      background: #2a2a2a;
+      border: 1px solid rgba(255,255,255,.2);
+      color: #fff;
+      border-radius: 12px;
+      padding: 12px;
+    }
+
+    .form-control:focus {
+      background: #2a2a2a;
+      border-color: #d4af37;
+      box-shadow: 0 0 0 .2rem rgba(212,175,55,.15);
+      color: #fff;
+    }
+
+    .btn-primary {
+      background: #d4af37;
+      border: none;
+      border-radius: 12px;
+      font-weight: 800;
+      padding: 12px;
+    }
+
+    .btn-primary:hover {
+      background: #c39d2f;
+    }
+
+    .login-footer {
+      margin-top: 1.5rem;
+      font-size: .8rem;
+      color: rgba(248,249,250,.4);
+      text-align: center;
     }
   </style>
 </head>
+
 <body>
-  <div class="login-container">
-    <h2 class="mb-4 text-center">
-      {% if manager %}Manager Login{% else %}Employee Login{% endif %}
-    </h2>
+  <div class="login-card">
+
+    <div class="text-center mb-4">
+      <div class="d-flex justify-content-center align-items-center gap-2 mb-2">
+        <span class="brand-dot"></span>
+        <span class="brand-title">River City Time Clock</span>
+      </div>
+      <div class="brand-sub">
+        Secure Access Portal
+      </div>
+    </div>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
@@ -42,10 +111,7 @@
       {% endif %}
     {% endwith %}
 
-    <form
-      method="POST"
-      action="{% if manager %}{{ url_for('manager_login') }}{% else %}{{ url_for('login') }}{% endif %}"
-    >
+    <form method="POST" action="{{ url_for('login') }}">
       <div class="mb-3">
         <label for="username" class="form-label">Username</label>
         <input
@@ -53,10 +119,12 @@
           class="form-control"
           id="username"
           name="username"
+          autocomplete="username"
           autofocus
           required
         />
       </div>
+
       <div class="mb-3">
         <label for="password" class="form-label">Password</label>
         <input
@@ -64,21 +132,27 @@
           class="form-control"
           id="password"
           name="password"
+          autocomplete="current-password"
           required
         />
       </div>
+
+      <div class="form-check mb-3">
+        <input class="form-check-input" type="checkbox" value="1" id="remember">
+        <label class="form-check-label" for="remember">
+          Remember me on this device
+        </label>
+      </div>
+
       <button type="submit" class="btn btn-primary w-100">
-        {% if manager %}Log in as Manager{% else %}Log in as Employee{% endif %}
+        Sign In
       </button>
     </form>
 
-    <div class="mt-3 text-center">
-      {% if manager %}
-        <a href="{{ url_for('login') }}">Employee? Click here</a>
-      {% else %}
-        <a href="{{ url_for('manager_login') }}">Manager? Click here</a>
-      {% endif %}
+    <div class="login-footer">
+      © {{ now().year if now else "2026" }} River City. Authorized access only.
     </div>
+
   </div>
 </body>
 </html>

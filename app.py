@@ -1004,44 +1004,43 @@ def manage_employees():
 @app.route('/login', methods=['GET','POST'])
 def login():
     """
-    EMPLOYEE login page. Only User.is_manager == False may log in here.
-    After successful login, redirect to the clock page (index).
+    ✅ Single login page for ALL roles.
+    - employee -> clock
+    - supervisor/admin -> weekly report (scoped to their location if set)
     """
     if request.method == 'POST':
-        u = User.query.filter_by(username=request.form['username']).first()
-        if u and getattr(u, "active", True) is False:
+        username = (request.form.get('username') or '').strip()
+        password = request.form.get('password') or ''
+
+        u = User.query.filter_by(username=username).first()
+
+        if not u or not u.check_password(password):
+            flash('Invalid credentials', 'danger')
+            return redirect(url_for('login'))
+
+        if getattr(u, "active", True) is False:
             flash("Account disabled. Contact an admin.", "danger")
             return redirect(url_for('login'))
-        if u and u.check_password(request.form['password']) and (getattr(u, "role", "employee") == "employee"):
-            login_user(u)
-            return redirect(url_for('index'))
-        flash('Invalid employee credentials', 'danger')
-        return redirect(url_for('login'))
 
-    # Render the same login.html template (no manager flag)
+        login_user(u)
+
+        # ✅ Redirect based on role
+        role = (getattr(u, "role", "employee") or "employee").lower()
+
+        if role in ("supervisor", "admin"):
+            # Supervisors default to their assigned location; admins can be global
+            loc_id = getattr(u, "location_id", None) or 1
+            return redirect(url_for('weekly_report', loc=int(loc_id)))
+
+        return redirect(url_for('index'))
+
     return render_template('login.html')
 
 
 @app.route('/manager_login', methods=['GET','POST'])
 def manager_login():
-    """
-    MANAGER login page. Only User.is_manager == True may log in here.
-    After successful login, redirect to the report page.
-    """
-    if request.method == 'POST':
-        u = User.query.filter_by(username=request.form['username']).first()
-        if u and getattr(u, "active", True) is False:
-            flash("Account disabled. Contact an admin.", "danger")
-            return redirect(url_for('manager_login'))
-        if u and u.check_password(request.form['password']) and (getattr(u, "role", "employee") in ("supervisor", "admin")):
-            login_user(u)
-            # Redirect manager to /report (default loc=1)
-            return redirect(url_for('weekly_report', loc=1))
-        flash('Invalid manager credentials', 'danger')
-        return redirect(url_for('manager_login'))
-
-    # Render login.html but pass a flag so the template knows it's for managers
-    return render_template('login.html', manager=True)
+    # ✅ Backward compatibility: old bookmark -> new unified login
+    return redirect(url_for('login'))
 
 @app.route('/logout')
 @login_required
