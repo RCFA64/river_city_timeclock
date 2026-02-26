@@ -53,9 +53,19 @@ def load_user(user_id):
 def manager_required(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
-        if not current_user.is_authenticated or not getattr(current_user, "is_manager", False):
+        if not current_user.is_authenticated:
+            flash("Login required.", "warning")
+            return redirect(url_for("login", next=request.path))
+
+        if getattr(current_user, "active", True) is False:
+            flash("Account disabled. Contact an admin.", "danger")
+            return redirect(url_for("login"))
+
+        # ✅ "Manager" = supervisor OR admin
+        if not (getattr(current_user, "is_supervisor", False) or getattr(current_user, "is_admin", False)):
             flash("Manager access required.", "warning")
-            return redirect(url_for("manager_login"))
+            return redirect(url_for("index"))
+
         return fn(*args, **kwargs)
     return wrapper
 
