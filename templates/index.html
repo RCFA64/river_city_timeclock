@@ -145,15 +145,23 @@
     window.location.search = q;
   });
 
-  // Filter employee dropdown locally
+  // Store all employee options (excluding placeholder) for filtering
+  const allOptions = Array.from(empSelect.querySelectorAll('option')).slice(1);
+
+  // Filter employee dropdown by removing/re-adding options
   empFilter.addEventListener('input', () => {
     const term = (empFilter.value || '').toLowerCase().trim();
-    const opts = empSelect.querySelectorAll('option');
-    opts.forEach((o, idx) => {
-      if (idx === 0) return;
-      const show = o.textContent.toLowerCase().includes(term);
-      o.hidden = !show;
+    while (empSelect.options.length > 1) empSelect.remove(1);
+    allOptions.forEach(o => {
+      if (!term || o.textContent.toLowerCase().includes(term)) {
+        empSelect.appendChild(o);
+      }
     });
+  });
+
+  // Prevent Enter in filter from submitting the location form
+  empFilter.addEventListener('keydown', e => {
+    if (e.key === 'Enter') e.preventDefault();
   });
 
   function toggleFeed() {
