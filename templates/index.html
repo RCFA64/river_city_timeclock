@@ -74,8 +74,55 @@
     </div>
   </div>
 
-  {% if emp and weekly_data %}
-  <!-- Weekly Hours -->
+  <!-- Live feed -->
+  <div class="col-12 col-lg-5">
+    <div class="card bg-dark border-light h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <h4 class="mb-0 fw-bold">Recent Activity</h4>
+          <span class="text-secondary small">Last 20 punches</span>
+        </div>
+
+        <div class="table-responsive mt-3">
+          <table id="time-table" class="table table-dark table-striped align-middle mb-0">
+            <thead>
+              <tr>
+                <th style="width:120px;">Time</th>
+                <th>Name</th>
+                <th style="width:90px;">Type</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for entry in feed %}
+                <tr>
+                  <td class="text-nowrap">{{ entry.time_str }}</td>
+                  <td>{{ entry.employee }}</td>
+                  <td>
+                    {% if entry.type == 'IN' %}
+                      <span class="badge bg-success">IN</span>
+                    {% else %}
+                      <span class="badge bg-danger">OUT</span>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+              {% if not feed %}
+                <tr><td colspan="3" class="text-center text-secondary py-4">No punches yet</td></tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+
+        <div id="placeholder-msg" class="text-center text-secondary mt-3" style="display:none;">
+          Have a wonderful day!
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if emp and weekly_data %}
+<div class="row g-3 mt-1">
   <div class="col-12">
     <div class="card bg-dark border-light">
       <div class="card-body">
@@ -126,54 +173,8 @@
       </div>
     </div>
   </div>
-  {% endif %}
-
-  <!-- Live feed -->
-  <div class="col-12 col-lg-5">
-    <div class="card bg-dark border-light h-100">
-      <div class="card-body">
-        <div class="d-flex justify-content-between align-items-center">
-          <h4 class="mb-0 fw-bold">Recent Activity</h4>
-          <span class="text-secondary small">Last 20 punches</span>
-        </div>
-
-        <div class="table-responsive mt-3">
-          <table id="time-table" class="table table-dark table-striped align-middle mb-0">
-            <thead>
-              <tr>
-                <th style="width:120px;">Time</th>
-                <th>Name</th>
-                <th style="width:90px;">Type</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for entry in feed %}
-                <tr>
-                  <td class="text-nowrap">{{ entry.time_str }}</td>
-                  <td>{{ entry.employee }}</td>
-                  <td>
-                    {% if entry.type == 'IN' %}
-                      <span class="badge bg-success">IN</span>
-                    {% else %}
-                      <span class="badge bg-danger">OUT</span>
-                    {% endif %}
-                  </td>
-                </tr>
-              {% endfor %}
-              {% if not feed %}
-                <tr><td colspan="3" class="text-center text-secondary py-4">No punches yet</td></tr>
-              {% endif %}
-            </tbody>
-          </table>
-        </div>
-
-        <div id="placeholder-msg" class="text-center text-secondary mt-3" style="display:none;">
-          Have a wonderful day!
-        </div>
-      </div>
-    </div>
-  </div>
 </div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
