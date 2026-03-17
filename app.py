@@ -286,6 +286,57 @@ def index():
     q = Employee.query.filter_by(location_id=sel).filter(Employee.active.is_(True))
     emps = q.order_by(Employee.name.asc()).all()
 
+    # weekly hours for selected employee
+    weekly_data = []
+    week_total_hrs = 0.0
+    if emp:
+        days_since_monday = now_local.weekday()
+        this_monday = (now_local - timedelta(days=days_since_monday)).replace(
+            hour=0, minute=0, second=0, microsecond=0)
+        week_start_utc = this_monday.astimezone(ZoneInfo('UTC'))
+        week_end_utc = (this_monday + timedelta(days=7)).astimezone(ZoneInfo('UTC'))
+
+        week_punches = (
+            Punch.query
+            .filter(Punch.employee_id == emp,
+                    Punch.timestamp >= week_start_utc,
+                    Punch.timestamp < week_end_utc)
+            .order_by(Punch.timestamp)
+            .all()
+        )
+
+        by_date = defaultdict(list)
+        for p in week_punches:
+            local_dt = p.timestamp.replace(tzinfo=ZoneInfo('UTC')).astimezone(tz)
+            by_date[local_dt.date()].append((p.type, local_dt))
+
+        week_seconds = 0
+        dates = [this_monday.date() + timedelta(days=i) for i in range(7)]
+        for d in dates:
+            events = sorted(by_date.get(d, []), key=lambda x: x[1])
+            event_strs = []
+            daily_seconds = 0
+            last_in = None
+            for ev_type, ev_dt in events:
+                event_strs.append({
+                    'type': ev_type,
+                    'time_str': ev_dt.strftime('%I:%M %p')
+                })
+                if ev_type == 'IN':
+                    last_in = ev_dt
+                elif ev_type == 'OUT' and last_in:
+                    delta = (ev_dt - last_in).total_seconds()
+                    if delta > 0:
+                        daily_seconds += delta
+                    last_in = None
+            week_seconds += daily_seconds
+            weekly_data.append({
+                'date_str': d.strftime('%a %m/%d'),
+                'events': event_strs,
+                'daily_hours': round(daily_seconds / 3600, 2)
+            })
+        week_total_hrs = round(week_seconds / 3600, 2)
+
     return render_template(
         'index.html',
         locations=locs,
@@ -293,7 +344,9 @@ def index():
         emps=emps,
         feed=feed,
         current_date=current_date,
-        emp=emp  # <-- keep this as the selected employee_id (int) from querystring
+        emp=emp,
+        weekly_data=weekly_data,
+        week_total_hrs=week_total_hrs,
     )
 
 @app.route('/punch', methods=['POST'])
@@ -630,6 +683,87 @@ def admin_delete_punch(punch_id: int):
 
     flash("Punch deleted (audit logged).", "success")
     return redirect(url_for("admin_punches", loc=loc_id))
+
+@app.route('/admin/punch/new', methods=['GET', 'POST'])
+@supervisor_required
+def admin_add_punch():
+    locations = Location.query.order_by(Location.name).all()
+    if not locations:
+        flash("No locations configured.", "danger")
+        return redirect(url_for("index"))
+
+    try:
+        loc_id = int(request.args.get('loc', locations[0].id))
+    except Exception:
+        loc_id = locations[0].id
+
+    loc = Location.query.get(loc_id)
+    if not loc:
+        loc = locations[0]
+        loc_id = loc.id
+
+    require_user_location_scope(loc_id)
+
+    tz = ZoneInfo(TIMEZONES[loc.name])
+    emps = (Employee.query
+            .filter(Employee.location_id == loc_id, Employee.active.is_(True))
+            .order_by(Employee.name.asc())
+            .all())
+
+    if request.method == 'POST':
+        employee_id = request.form.get('employee_id', type=int)
+        punch_type = (request.form.get('type') or '').strip().upper()
+        ts_str = (request.form.get('timestamp') or '').strip()
+        note = (request.form.get('note') or '').strip()[:500]
+
+        if punch_type not in ('IN', 'OUT'):
+            flash("Invalid punch type.", "warning")
+            return redirect(url_for('admin_add_punch', loc=loc_id))
+
+        emp = Employee.query.get(employee_id)
+        if not emp or emp.location_id != loc_id:
+            flash("Invalid employee.", "warning")
+            return redirect(url_for('admin_add_punch', loc=loc_id))
+
+        try:
+            new_local = datetime.fromisoformat(ts_str)
+        except Exception:
+            flash("Invalid timestamp.", "warning")
+            return redirect(url_for('admin_add_punch', loc=loc_id))
+
+        new_local = new_local.replace(tzinfo=tz)
+        new_utc = new_local.astimezone(ZoneInfo('UTC')).replace(tzinfo=None)
+
+        p = Punch(employee_id=employee_id, type=punch_type, timestamp=new_utc)
+        db.session.add(p)
+        db.session.flush()
+
+        db.session.add(PunchAudit(
+            punch_id=p.id,
+            employee_id=employee_id,
+            changed_by_user_id=getattr(current_user, 'id', None),
+            action='CREATE',
+            old_type=None,
+            new_type=punch_type,
+            old_timestamp=None,
+            new_timestamp=new_utc,
+            note=note or 'Manual punch creation',
+        ))
+        db.session.commit()
+
+        flash("Punch created (audit logged).", "success")
+        return redirect(url_for('admin_punches', loc=loc_id))
+
+    now_local = datetime.now(tz)
+    default_ts = now_local.strftime('%Y-%m-%dT%H:%M')
+
+    return render_template(
+        'admin_add_punch.html',
+        locations=locations,
+        loc=loc,
+        emps=emps,
+        default_ts=default_ts,
+    )
 
 @app.route('/admin/audit')
 @supervisor_required

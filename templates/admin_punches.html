@@ -8,6 +8,7 @@
     <div class="text-secondary">Review and edit punches by location and week.</div>
   </div>
   <div class="d-flex gap-2">
+    <a class="btn btn-success btn-sm fw-bold" href="{{ url_for('admin_add_punch', loc=loc.id) }}">Add Punch</a>
     <a class="btn btn-outline-light btn-sm" href="{{ url_for('admin_audit') }}">Audit Log</a>
     <a class="btn btn-outline-light btn-sm" href="{{ url_for('weekly_report', loc=loc.id) }}">Weekly Report</a>
   </div>

@@ -71,10 +71,22 @@ select,
   color: var(--bs-light) !important;
 }
 
+/* Form text inputs (including datetime-local) on dark bg */
+.form-control {
+  color: var(--bs-light) !important;
+  background-color: var(--bs-dark) !important;
+  border-color: var(--bs-secondary) !important;
+}
+
 /* Ensure input placeholder text is white */
 .form-control::placeholder {
   color: var(--bs-light) !important;
   opacity: 1 !important;
+}
+
+/* Make datetime-local picker icon visible on dark background */
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
 }
 
 /* =========================================================

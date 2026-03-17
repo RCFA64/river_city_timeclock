@@ -74,6 +74,60 @@
     </div>
   </div>
 
+  {% if emp and weekly_data %}
+  <!-- Weekly Hours -->
+  <div class="col-12">
+    <div class="card bg-dark border-light">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <h4 class="mb-0 fw-bold">This Week's Hours</h4>
+          <span class="badge rounded-pill bg-primary px-3 py-2 fw-bold">{{ week_total_hrs }}h total</span>
+        </div>
+
+        <div class="table-responsive mt-3">
+          <table class="table table-dark table-striped align-middle mb-0">
+            <thead>
+              <tr>
+                <th style="width:120px;">Day</th>
+                <th>Punches</th>
+                <th style="width:100px;" class="text-end">Hours</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for day in weekly_data %}
+                <tr>
+                  <td class="fw-semibold">{{ day.date_str }}</td>
+                  <td>
+                    {% for ev in day.events %}
+                      {% if ev.type == 'IN' %}
+                        <span class="badge bg-success">IN</span>
+                      {% else %}
+                        <span class="badge bg-danger">OUT</span>
+                      {% endif %}
+                      <span class="small">{{ ev.time_str }}</span>
+                      {% if not loop.last %}&nbsp;{% endif %}
+                    {% endfor %}
+                    {% if not day.events %}
+                      <span class="text-secondary">—</span>
+                    {% endif %}
+                  </td>
+                  <td class="text-end">{{ day.daily_hours }}h</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot>
+              <tr class="fw-bold">
+                <td colspan="2">Week Total</td>
+                <td class="text-end">{{ week_total_hrs }}h</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   <!-- Live feed -->
   <div class="col-12 col-lg-5">
     <div class="card bg-dark border-light h-100">

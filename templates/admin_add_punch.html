@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Admin • Add Punch{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+  <div>
+    <h2 class="fw-bold mb-1">Add Punch</h2>
+    <div class="text-secondary">
+      Location: <span class="fw-semibold">{{ loc.name }}</span>
+    </div>
+  </div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-light btn-sm" href="{{ url_for('admin_punches', loc=loc.id) }}">Back to Punches</a>
+    <a class="btn btn-outline-light btn-sm" href="{{ url_for('admin_audit') }}">Audit Log</a>
+  </div>
+</div>
+
+<div class="card bg-dark border-light">
+  <div class="card-body">
+    <form method="post" class="row g-3">
+      <div class="col-12 col-md-4">
+        <label class="form-label text-secondary">Employee</label>
+        <select class="form-select" name="employee_id" required>
+          <option value="">Select employee…</option>
+          {% for e in emps %}
+            <option value="{{ e.id }}">{{ e.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12 col-md-2">
+        <label class="form-label text-secondary">Type</label>
+        <select class="form-select" name="type" required>
+          <option value="IN">IN</option>
+          <option value="OUT">OUT</option>
+        </select>
+      </div>
+
+      <div class="col-12 col-md-3">
+        <label class="form-label text-secondary">Local Timestamp</label>
+        <input class="form-control" type="datetime-local" name="timestamp" value="{{ default_ts }}" required>
+        <div class="text-secondary small mt-1">
+          Saved in UTC internally; you enter in the location's local time.
+        </div>
+      </div>
+
+      <div class="col-12 col-md-3">
+        <label class="form-label text-secondary">Audit Note (optional)</label>
+        <input class="form-control" type="text" name="note" maxlength="500" placeholder="Reason for manual punch">
+      </div>
+
+      <div class="col-12 d-flex flex-wrap gap-2">
+        <button class="btn btn-success fw-bold" type="submit">Create Punch</button>
+        <a class="btn btn-outline-light" href="{{ url_for('admin_punches', loc=loc.id) }}">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

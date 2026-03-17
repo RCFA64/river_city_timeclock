@@ -12,7 +12,6 @@
         name="loc"
         onchange="this.form.submit()"
         class="form-select w-auto"
-        style="color: #000;"
       >
         {% for L in locations %}
           <option value="{{ L.id }}" {% if L.id == loc.id %}selected{% endif %}>
@@ -32,7 +31,6 @@
         name="week_start"
         onchange="this.form.submit()"
         class="form-select w-auto"
-        style="color: #000;"
       >
         {% for mon in mondays %}
           <option value="{{ mon }}" {% if mon == selected_monday %}selected{% endif %}>
