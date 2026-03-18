@@ -16,6 +16,8 @@ from sqlalchemy import inspect, text
 from functools import wraps
 import io
 import csv
+import re
+import zipfile
 
 TIMEZONES = {
     'Sacramento':   'America/Los_Angeles',
@@ -907,7 +909,227 @@ def payroll_export_csv():
         mimetype="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
-    
+
+# ----------------------------
+# ✅ ADMIN: CPS Payroll Export
+# ----------------------------
+def _normalize_name(name):
+    """Normalize a name for matching: lowercase, strip middle initials and special chars."""
+    name = name.strip().lower()
+    # Remove special unicode chars (like middle initial markers)
+    name = re.sub(r'[^\w\s,]', '', name, flags=re.UNICODE)
+    # Remove single-letter middle initials (e.g., "parkinson, jonathon n" -> "parkinson, jonathon")
+    name = re.sub(r'\b[a-z]\b', '', name)
+    # Collapse whitespace
+    name = re.sub(r'\s+', ' ', name).strip()
+    return name
+
+def _cps_name_to_first_last(cps_name):
+    """Convert CPS 'Last, First' to normalized 'first last' for matching."""
+    normalized = _normalize_name(cps_name)
+    if ',' in normalized:
+        parts = normalized.split(',', 1)
+        last = parts[0].strip()
+        first = parts[1].strip()
+        return f"{first} {last}"
+    return normalized
+
+def _timeclock_name_normalize(tc_name):
+    """Normalize timeclock 'First Last' name for matching."""
+    return _normalize_name(tc_name)
+
+@app.route('/admin/cps_export', methods=['GET', 'POST'])
+@admin_required
+def admin_cps_export():
+    locations = Location.query.order_by(Location.name).all()
+    if not locations:
+        flash("No locations configured.", "danger")
+        return redirect(url_for("index"))
+
+    # Use first location's tz for computing mondays (just for the dropdown)
+    tz_default = ZoneInfo(TIMEZONES[locations[0].name])
+    today_local = datetime.now(tz_default)
+    days_since_monday = today_local.weekday()
+    this_monday = (today_local - timedelta(days=days_since_monday)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    ).date()
+
+    three_months_ago = today_local.date() - timedelta(days=90)
+    mondays = []
+    m = this_monday
+    while m >= three_months_ago:
+        mondays.append(m)
+        m -= timedelta(days=7)
+    mondays.sort(reverse=True)
+
+    if request.method == 'POST':
+        # Parse week selection
+        week_start_str = request.form.get('week_start', '')
+        try:
+            week_start_date = datetime.fromisoformat(week_start_str).date()
+            if week_start_date not in mondays:
+                week_start_date = this_monday
+        except Exception:
+            week_start_date = this_monday
+
+        # Check file upload
+        uploaded = request.files.get('cps_file')
+        if not uploaded or not uploaded.filename:
+            flash("Please upload a CPS template CSV file.", "warning")
+            return redirect(url_for('admin_cps_export'))
+
+        # Read uploaded CPS CSV
+        try:
+            raw_text = uploaded.read().decode('utf-8-sig')
+        except Exception:
+            flash("Could not read CSV file. Ensure it is a valid UTF-8 CSV.", "danger")
+            return redirect(url_for('admin_cps_export'))
+
+        reader = csv.reader(io.StringIO(raw_text))
+        all_rows = list(reader)
+        if len(all_rows) < 2:
+            flash("CSV file appears empty.", "warning")
+            return redirect(url_for('admin_cps_export'))
+
+        header = all_rows[0]
+
+        # Find column indices
+        try:
+            idx_name = header.index('Employee_Name')
+            idx_comp = header.index('Compensation_Type')
+            idx_reg = header.index('[REG]hours')
+            idx_ot = header.index('[OT-FLSA]hours')
+        except ValueError as e:
+            flash(f"Missing expected column in CSV: {e}. Is this a CPS timesheet export?", "danger")
+            return redirect(url_for('admin_cps_export'))
+
+        # Helper functions
+        def round_to_15(dt_local):
+            minute = dt_local.minute
+            remainder = minute % 15
+            if remainder < 8:
+                new_minute = minute - remainder
+            else:
+                new_minute = minute + (15 - remainder)
+            if new_minute == 60:
+                dt_local = dt_local.replace(hour=(dt_local.hour + 1) % 24, minute=0, second=0, microsecond=0)
+            else:
+                dt_local = dt_local.replace(minute=new_minute, second=0, microsecond=0)
+            return dt_local
+
+        def compute_seconds(events):
+            events.sort(key=lambda x: x[1])
+            total = 0
+            last_in = None
+            for t, ts in events:
+                if t == "IN":
+                    last_in = ts
+                elif t == "OUT" and last_in:
+                    delta = (ts - last_in).total_seconds()
+                    if delta > 0:
+                        total += delta
+                    last_in = None
+            return int(total)
+
+        # Build hours lookup across ALL locations
+        tc_hours_all = {}  # normalized_name -> {reg, ot, total, name}
+        for loc in locations:
+            tz = ZoneInfo(TIMEZONES[loc.name])
+            week_start_local = datetime.combine(week_start_date, datetime.min.time(), tzinfo=tz)
+            week_end_local = week_start_local + timedelta(days=7)
+            week_start_utc = week_start_local.astimezone(ZoneInfo('UTC'))
+            week_end_utc = week_end_local.astimezone(ZoneInfo('UTC'))
+
+            punches = (
+                Punch.query
+                     .join(Employee)
+                     .filter(Employee.location_id == loc.id,
+                             Punch.timestamp >= week_start_utc,
+                             Punch.timestamp < week_end_utc)
+                     .order_by(Punch.employee_id, Punch.timestamp)
+                     .all()
+            )
+
+            by_emp = defaultdict(list)
+            for p in punches:
+                local_dt = p.timestamp.replace(tzinfo=ZoneInfo('UTC')).astimezone(tz)
+                local_dt = round_to_15(local_dt)
+                by_emp[p.employee_id].append((p.type, local_dt))
+
+            tc_employees = Employee.query.filter(
+                Employee.location_id == loc.id,
+                Employee.active.is_(True)
+            ).all()
+
+            for emp in tc_employees:
+                secs = compute_seconds(by_emp.get(emp.id, []))
+                remainder = secs % 900
+                secs_rounded = secs - remainder if remainder < 450 else secs + (900 - remainder)
+                total_hours = round(secs_rounded / 3600, 2)
+                if total_hours == 0:
+                    continue
+                reg = round(min(total_hours, 40.0), 2)
+                ot_hrs = round(max(total_hours - 40.0, 0.0), 2)
+                normalized = _timeclock_name_normalize(emp.name)
+                tc_hours_all[normalized] = {'reg': reg, 'ot': ot_hrs, 'total': total_hours, 'name': emp.name}
+
+        # Match and fill CPS rows
+        matched = []
+        unmatched_cps = []
+        matched_tc_names = set()
+
+        for i in range(1, len(all_rows)):
+            row = all_rows[i]
+            if len(row) <= max(idx_name, idx_comp, idx_reg, idx_ot):
+                continue
+
+            cps_name = row[idx_name]
+            comp_type = row[idx_comp].strip()
+
+            if comp_type != 'Hourly':
+                continue
+
+            normalized_cps = _cps_name_to_first_last(cps_name)
+            if normalized_cps in tc_hours_all:
+                hours = tc_hours_all[normalized_cps]
+                while len(row) <= max(idx_reg, idx_ot):
+                    row.append('')
+                row[idx_reg] = f"{hours['reg']:.2f}" if hours['reg'] > 0 else ''
+                row[idx_ot] = f"{hours['ot']:.2f}" if hours['ot'] > 0 else ''
+                matched.append(f"{cps_name} → {hours['total']:.2f}h")
+                matched_tc_names.add(normalized_cps)
+            else:
+                unmatched_cps.append(cps_name)
+
+        unmatched_tc = [v['name'] for k, v in tc_hours_all.items() if k not in matched_tc_names]
+
+        # Generate completed CSV (single file with all locations filled)
+        out = io.StringIO()
+        w = csv.writer(out)
+        for row in all_rows:
+            w.writerow(row)
+
+        # Flash summary
+        flash(f"Matched {len(matched)} employees with hours filled across all locations.", "success")
+        if unmatched_cps:
+            flash(f"CPS employees not found in timeclock ({len(unmatched_cps)}): {', '.join(unmatched_cps[:10])}", "warning")
+        if unmatched_tc:
+            flash(f"Timeclock employees not in CPS file ({len(unmatched_tc)}): {', '.join(unmatched_tc[:10])}", "info")
+
+        filename = f"cps_payroll_{week_start_date.isoformat()}.csv"
+        return Response(
+            out.getvalue().encode("utf-8-sig"),
+            mimetype="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
+    return render_template(
+        'admin_cps_export.html',
+        locations=locations,
+        mondays=mondays,
+        selected_monday=this_monday,
+    )
+
 @app.route('/api/employee_status/<int:employee_id>')
 def api_employee_status(employee_id: int):
     emp = Employee.query.get(employee_id)
